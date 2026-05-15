@@ -176,22 +176,29 @@ def fetch_data(session: requests.Session) -> dict:
     
     console.print(f"\n  [DEBUG] Fetching data with cookies: {dict(session.cookies)}")
     console.print(f"  [DEBUG] Data fetch URL: {DATA_URL}")
+    
+    request_headers = {
+        "accept": "application/json, text/javascript, */*; q=0.01",
+        "content-type": "application/json",
+        "origin": "https://portal.ecotricity.co.nz",
+        "x-requested-with": "XMLHttpRequest",
+        "referer": f"{BASE_URL}/consumptionDetails",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+    }
+    
+    console.print("\n  [DEBUG] Request Headers:")
+    for key, value in request_headers.items():
+        console.print(f"    {key}: {value}", style="dim")
+    
     console.print("\n  [DEBUG] Request Payload:")
     console.print(json.dumps(PAYLOAD, indent=2), style="dim")
     
     resp = session.post(
         DATA_URL,
         json=PAYLOAD,
-        headers={
-            "accept": "application/json, text/javascript, */*; q=0.01",
-            "content-type": "application/json",
-            "origin": "https://portal.ecotricity.co.nz",
-            "x-requested-with": "XMLHttpRequest",
-            "referer": f"{BASE_URL}/consumptionDetails",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-        },
+        headers=request_headers,
         timeout=30,
     )
 
