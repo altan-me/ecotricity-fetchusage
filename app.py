@@ -186,5 +186,11 @@ def api_costs_statistics():
     })
 
 
+@app.route("/health")
+def health():
+    """Health check endpoint for Docker/monitoring."""
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()}), 200
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

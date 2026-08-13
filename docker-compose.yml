@@ -1,0 +1,32 @@
+services:
+  ecotricity:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecotricity-fetchusage
+    ports:
+      - "5000:5000"
+    environment:
+      - ECOTRICITY_LOGIN=${ECOTRICITY_LOGIN}
+      - ECOTRICITY_PASSWORD=${ECOTRICITY_PASSWORD}
+      - SCHEDULER_HOUR=${SCHEDULER_HOUR:-23}
+      - SCHEDULER_MINUTE=${SCHEDULER_MINUTE:-0}
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persist the SQLite database
+      - ecotricity_data:/app
+      # Optional: mount .env file
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  ecotricity_data:
+    driver: local
