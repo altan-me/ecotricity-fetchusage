@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>⚡ Power Consumption Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.0/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -124,7 +125,8 @@
         }
 
         .cost-card h3 {
-            color: rgba(255,255,255,0.8);
+            color: rgba(255,255,255,0.95);
+            font-weight: 600;
         }
 
         .cost-card .value {
@@ -132,7 +134,12 @@
         }
 
         .cost-card .unit {
-            color: rgba(255,255,255,0.7);
+            color: rgba(255,255,255,0.9);
+        }
+
+        .cost-card .subtext {
+            color: rgba(255,255,255,0.95);
+            font-weight: 500;
         }
 
         .chart-container {
@@ -156,10 +163,41 @@
             position: relative;
             height: 400px;
             margin-bottom: 30px;
+            overflow: auto;
         }
 
         .chart-wrapper.small {
             height: 300px;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .chart-controls button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+
+        .chart-controls button:hover {
+            background: #764ba2;
+        }
+
+        .zoom-info {
+            font-size: 0.85em;
+            color: #999;
+            font-style: italic;
         }
 
         .two-column {
@@ -301,6 +339,12 @@
             <!-- Main Charts -->
             <div class="chart-container">
                 <h2>📈 Daily Consumption Over Time</h2>
+                <div class="chart-controls">
+                    <button onclick="zoomChart(1.2)">🔍 Zoom In</button>
+                    <button onclick="zoomChart(0.8)">🔍 Zoom Out</button>
+                    <button onclick="resetChart()">↺ Reset View</button>
+                    <span class="zoom-info">Scroll or drag to navigate through data</span>
+                </div>
                 <div class="chart-wrapper">
                     <canvas id="timeSeriesChart"></canvas>
                 </div>
@@ -467,6 +511,38 @@
                     plugins: {
                         legend: {
                             labels: { usePointStyle: true, padding: 20 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    if (context.datasetIndex === 0) {
+                                        const consumption = context.parsed.y;
+                                        const costPerKwh = 0.244375; // $0.2125 * 1.15 (incl. GST)
+                                        const cost = (consumption * costPerKwh).toFixed(2);
+                                        return `Cost: $${cost} NZD`;
+                                    }
+                                    return '';
+                                }
+                            }
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                    speed: 0.1,
+                                },
+                                pinch: {
+                                    enabled: true,
+                                },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                                onPan: function({chart}) {
+                                    // Handle panning
+                                }
+                            },
                         }
                     },
                     scales: {
@@ -477,23 +553,54 @@
                     }
                 }
             });
+            
+            // Enable middle mouse button or alt+click for panning
+            timeSeriesCtx.canvas.addEventListener('mousedown', handlePanStart);
+            timeSeriesCtx.canvas.addEventListener('mousemove', handlePanMove);
+            timeSeriesCtx.canvas.addEventListener('mouseup', handlePanEnd);
+            timeSeriesCtx.canvas.addEventListener('mouseleave', handlePanEnd);
 
             // Day of week chart
             const dayOfWeekCtx = document.getElementById('dayOfWeekChart').getContext('2d');
             const dayLabels = Object.keys(daily);
-            const dayValues = dayLabels.map(day => daily[day].average);
+            
+            // Sort days by average consumption (highest to lowest)
+            const sortedDays = dayLabels
+                .map(day => ({ day, average: daily[day].average }))
+                .sort((a, b) => b.average - a.average);
+            
+            const sortedDayLabels = sortedDays.map(d => d.day);
+            const dayValues = sortedDays.map(d => d.average);
+            
+            // Create gradient colors based on consumption values
+            const maxDayValue = Math.max(...dayValues);
+            const minDayValue = Math.min(...dayValues);
+            const dayBarColors = dayValues.map(value => {
+                const normalized = (value - minDayValue) / (maxDayValue - minDayValue);
+                // Gradient from light blue to deep purple
+                if (normalized < 0.5) {
+                    const ratio = normalized * 2;
+                    const r = Math.round(102 + (118 - 102) * ratio);
+                    const g = Math.round(126 + (75 - 126) * ratio);
+                    const b = Math.round(234 + (162 - 234) * ratio);
+                    return `rgb(${r}, ${g}, ${b})`;
+                } else {
+                    const ratio = (normalized - 0.5) * 2;
+                    const r = Math.round(118 + (200 - 118) * ratio);
+                    const g = Math.round(75 + (30 - 75) * ratio);
+                    const b = Math.round(162 + (40 - 162) * ratio);
+                    return `rgb(${r}, ${g}, ${b})`;
+                }
+            });
             
             dayOfWeekChart = new Chart(dayOfWeekCtx, {
                 type: 'bar',
                 data: {
-                    labels: dayLabels,
+                    labels: sortedDayLabels,
                     datasets: [{
                         label: 'Average Usage (kWh)',
                         data: dayValues,
-                        backgroundColor: [
-                            '#667eea', '#764ba2', '#667eea', '#764ba2', 
-                            '#667eea', '#e74c3c', '#e74c3c'
-                        ],
+                        backgroundColor: dayBarColors,
                     }]
                 },
                 options: {
@@ -648,6 +755,44 @@
             link.href = '/api/export/csv';
             link.download = 'consumption.csv';
             link.click();
+        }
+
+        // Zoom and pan controls
+        let isPanning = false;
+        let panStartX = 0;
+
+        function zoomChart(factor) {
+            if (timeSeriesChart) {
+                timeSeriesChart.zoom(factor);
+            }
+        }
+
+        function resetChart() {
+            if (timeSeriesChart) {
+                timeSeriesChart.resetZoom();
+            }
+        }
+
+        function handlePanStart(e) {
+            if (e.button === 2 || (e.button === 0 && e.altKey)) { // Right click or Alt+left click
+                isPanning = true;
+                panStartX = e.clientX;
+            }
+        }
+
+        function handlePanMove(e) {
+            if (isPanning && timeSeriesChart) {
+                const deltaX = e.clientX - panStartX;
+                if (Math.abs(deltaX) > 5) {
+                    const amount = -deltaX * 0.001;
+                    timeSeriesChart.pan({x: amount});
+                    panStartX = e.clientX;
+                }
+            }
+        }
+
+        function handlePanEnd(e) {
+            isPanning = false;
         }
 
         // Load data on page load
