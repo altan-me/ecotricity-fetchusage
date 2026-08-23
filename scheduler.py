@@ -64,11 +64,16 @@ class ConsumptionScheduler:
             self._session = create_session(self.login, self.password)
         return self._session
     
-    def fetch_and_store(self) -> None:
-        """Fetch consumption data and store it in the database."""
+    def fetch_and_store(self, date_range: str = "last 30 days") -> None:
+        """Fetch consumption data and store it in the database.
+        
+        Args:
+            date_range: Date range to fetch (default: "last 30 days")
+                       Examples: "last 7 days", "last 14 days", "last 30 days", "last 3 months"
+        """
         try:
             record_sync_start()
-            self.console.print(f"\n[cyan][{datetime.now().isoformat()}] Starting scheduled fetch...[/cyan]")
+            self.console.print(f"\n[cyan][{datetime.now().isoformat()}] Starting scheduled fetch ({date_range})...[/cyan]")
             
             session = self._get_session()
             
@@ -76,8 +81,8 @@ class ConsumptionScheduler:
             init_consumption_page(session)
             init_data(session)
             
-            # Fetch last 30 days by default
-            date_from, date_to = calculate_date_range("last 30 days")
+            # Fetch with specified date range
+            date_from, date_to = calculate_date_range(date_range)
             payload = create_payload(date_from, date_to)
             
             # Fetch data

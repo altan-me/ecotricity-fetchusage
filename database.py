@@ -8,7 +8,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
-DB_PATH = Path(__file__).parent / "consumption.db"
+# Create data directory for persistent storage
+DATA_DIR = Path(__file__).parent / "data"
+DB_PATH = DATA_DIR / "consumption.db"
 
 # Cost configuration ($ per kWh + GST)
 COST_PER_KWH = 0.2125  # $0.2125 per kWh before GST
@@ -18,6 +20,9 @@ TOTAL_COST_PER_KWH = COST_PER_KWH * (1 + GST_RATE)  # $0.244375 per kWh with GST
 
 def init_db() -> None:
     """Initialize the database with required tables."""
+    # Ensure parent directory exists
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     

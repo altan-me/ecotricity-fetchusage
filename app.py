@@ -227,8 +227,16 @@ def api_sync_info():
 
 @app.route("/api/sync/trigger", methods=["POST"])
 def api_sync_trigger():
-    """Manually trigger a sync."""
+    """Manually trigger a sync with optional date range."""
     global _scheduler
+    
+    # Get date range from query parameter (default: last 30 days)
+    date_range = request.args.get('range', 'last 30 days')
+    
+    # Validate date range to prevent injection
+    valid_ranges = ['last 7 days', 'last 14 days', 'last 30 days', 'last 3 months']
+    if date_range not in valid_ranges:
+        date_range = 'last 30 days'
     
     # Check if scheduler is available
     if _scheduler is None:
@@ -242,15 +250,15 @@ def api_sync_trigger():
         # Record sync start
         try:
             record_sync_start()
-            print("[app] Recorded sync start")
+            print(f"[app] Recorded sync start for {date_range}")
         except Exception as e:
             print(f"[app] Warning: Failed to record sync start: {e}")
         
         # Run fetch in background thread to avoid blocking the API response
         def run_fetch():
             try:
-                print("[app] Starting fetch_and_store in background thread")
-                _scheduler.fetch_and_store()
+                print(f"[app] Starting fetch_and_store in background thread for {date_range}")
+                _scheduler.fetch_and_store(date_range=date_range)
                 try:
                     record_sync_complete()
                     print("[app] Recorded sync complete")
@@ -265,7 +273,7 @@ def api_sync_trigger():
                 import traceback
                 traceback.print_exc()
         
-        print("[app] Spawning sync thread")
+        print(f"[app] Spawning sync thread for {date_range}")
         thread = threading.Thread(target=run_fetch, daemon=True)
         thread.start()
         

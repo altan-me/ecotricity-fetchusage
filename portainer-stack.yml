@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  ecotricity:
+    image: ghcr.io/YOUR_USERNAME/ecotricity-fetchusage:latest
+    container_name: ecotricity-fetchusage
+    ports:
+      - "5000:5000"
+    environment:
+      # Secrets from Portainer environment variables
+      - ECOTRICITY_LOGIN=${ECOTRICITY_LOGIN}
+      - ECOTRICITY_PASSWORD=${ECOTRICITY_PASSWORD}
+      # Scheduler configuration
+      - SCHEDULER_HOUR=${SCHEDULER_HOUR:-23}
+      - SCHEDULER_MINUTE=${SCHEDULER_MINUTE:-0}
+      # Flask configuration
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persist the data directory (database) in a named volume
+      - ecotricity_db:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    # Labels for Portainer
+    labels:
+      - "com.example.description=Ecotricity Power Consumption Tracker"
+
+volumes:
+  ecotricity_db:
+    driver: local

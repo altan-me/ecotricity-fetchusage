@@ -367,6 +367,75 @@
             background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
         }
 
+        .sync-button-group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .sync-dropdown {
+            position: relative;
+        }
+
+        .sync-dropdown-toggle {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95em;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        .sync-dropdown-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .sync-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 160px;
+            z-index: 1000;
+            margin-top: 4px;
+        }
+
+        .sync-dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+
+        .sync-dropdown-item:first-child {
+            border-radius: 5px 5px 0 0;
+        }
+
+        .sync-dropdown-item:last-child {
+            border-radius: 0 0 5px 5px;
+        }
+
+        .sync-dropdown-item:hover {
+            background-color: #f3f4f6;
+        }
+
         @media (max-width: 768px) {
             .sync-card {
                 flex-direction: column;
@@ -416,9 +485,20 @@
                         </div>
                     </div>
                 </div>
-                <button id="sync-trigger-btn" class="sync-button" onclick="triggerManualSync()">
-                    🔄 Sync Now
-                </button>
+                <div class="sync-button-group">
+                    <button id="sync-trigger-btn" class="sync-button" onclick="triggerManualSync('last 30 days')">
+                        🔄 Sync Now
+                    </button>
+                    <div class="sync-dropdown">
+                        <button class="sync-dropdown-toggle" onclick="toggleSyncDropdown()">▼</button>
+                        <div class="sync-dropdown-menu" id="sync-dropdown-menu">
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 7 days')">Last 7 Days</button>
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 14 days')">Last 14 Days</button>
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 30 days')">Last 30 Days</button>
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 3 months')">Last 3 Months</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Summary Statistics -->
@@ -1012,9 +1092,29 @@
             statusDotEl.classList.add(syncInfo.sync_status);
         }
 
-        async function triggerManualSync() {
+        function toggleSyncDropdown() {
+            const menu = document.getElementById('sync-dropdown-menu');
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('sync-dropdown-menu');
+            const toggle = e.target.closest('.sync-dropdown-toggle');
+            const dropdown = e.target.closest('.sync-dropdown');
+            
+            if (!toggle && !dropdown) {
+                menu.style.display = 'none';
+            }
+        });
+
+        async function triggerManualSync(dateRange = 'last 30 days') {
             const btn = document.getElementById('sync-trigger-btn');
             const statusDotEl = document.getElementById('sync-status-dot');
+            const menu = document.getElementById('sync-dropdown-menu');
+            
+            // Close dropdown
+            menu.style.display = 'none';
             
             // Disable button and show loading state
             btn.disabled = true;
@@ -1022,7 +1122,7 @@
             btn.textContent = '🔄 Syncing...';
             
             try {
-                const response = await fetch('/api/sync/trigger', {
+                const response = await fetch(`/api/sync/trigger?range=${encodeURIComponent(dateRange)}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
