@@ -2,9 +2,10 @@
 Flask web UI for visualizing power consumption data.
 """
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from datetime import datetime, timedelta
 import json
+import threading
 from database import (
     init_db,
     get_all_consumption,
@@ -18,6 +19,10 @@ from database import (
     get_all_monthly_costs,
     get_cost_statistics,
     get_cost_trend,
+    get_sync_info,
+    update_sync_info,
+    record_sync_start,
+    record_sync_complete,
     TOTAL_COST_PER_KWH,
 )
 
@@ -25,6 +30,24 @@ app = Flask(__name__)
 
 # Initialize database on startup
 init_db()
+
+# Global variable to store the scheduler instance (set by run.py)
+_scheduler = None
+
+def set_scheduler(scheduler):
+    """Set the global scheduler instance."""
+    global _scheduler
+    _scheduler = scheduler
+    
+    # Calculate and store next scheduled sync time
+    if _scheduler and hasattr(_scheduler, 'scheduler'):
+        try:
+            jobs = _scheduler.scheduler.get_jobs()
+            daily_job = next((j for j in jobs if j.id == 'daily_fetch'), None)
+            if daily_job and daily_job.next_run_time:
+                update_sync_info(next_scheduled_sync=daily_job.next_run_time.isoformat())
+        except:
+            pass
 
 
 @app.route("/")
@@ -184,6 +207,82 @@ def api_costs_statistics():
         "trend": trend,
         "costPerKwh": TOTAL_COST_PER_KWH
     })
+
+
+@app.route("/api/sync/info")
+def api_sync_info():
+    """Get sync information (last sync and next scheduled sync)."""
+    try:
+        sync_info = get_sync_info()
+        return jsonify(sync_info)
+    except Exception as e:
+        print(f"Error getting sync info: {e}")
+        return jsonify({
+            "last_sync": None,
+            "next_scheduled_sync": None,
+            "sync_status": "unknown",
+            "error": str(e)
+        }), 200
+
+
+@app.route("/api/sync/trigger", methods=["POST"])
+def api_sync_trigger():
+    """Manually trigger a sync."""
+    global _scheduler
+    
+    # Check if scheduler is available
+    if _scheduler is None:
+        return jsonify({
+            "error": "Scheduler not initialized",
+            "status": "unavailable",
+            "message": "Sync not available. Please ensure app is running with 'python run.py all' or scheduler is initialized."
+        }), 503
+    
+    try:
+        # Record sync start
+        try:
+            record_sync_start()
+            print("[app] Recorded sync start")
+        except Exception as e:
+            print(f"[app] Warning: Failed to record sync start: {e}")
+        
+        # Run fetch in background thread to avoid blocking the API response
+        def run_fetch():
+            try:
+                print("[app] Starting fetch_and_store in background thread")
+                _scheduler.fetch_and_store()
+                try:
+                    record_sync_complete()
+                    print("[app] Recorded sync complete")
+                except Exception as e:
+                    print(f"[app] Warning: Failed to record sync complete: {e}")
+            except Exception as e:
+                try:
+                    update_sync_info(sync_status='idle')
+                except:
+                    pass
+                print(f"[app] Manual sync failed: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        print("[app] Spawning sync thread")
+        thread = threading.Thread(target=run_fetch, daemon=True)
+        thread.start()
+        
+        return jsonify({
+            "status": "syncing",
+            "message": "Sync started in background"
+        }), 202
+    
+    except Exception as e:
+        print(f"[app] Error in sync trigger endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": str(e),
+            "status": "error",
+            "message": "An error occurred while triggering sync"
+        }), 500
 
 
 @app.route("/health")

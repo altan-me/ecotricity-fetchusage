@@ -86,15 +86,28 @@ def run_combined(hour: int = 23, minute: int = 0, host: str = "127.0.0.1", port:
     console.print(f"[green]✓ Scheduler will backfill missing data every Monday[/green]")
     console.print(f"[green]✓ Web UI will be available at http://{host}:{port}[/green]\n")
     
+    # Import before creating threads to avoid import issues
+    from scheduler import ConsumptionScheduler
+    from app import app, set_scheduler
+    
+    # Create scheduler instance for use in web UI
+    scheduler = ConsumptionScheduler(hour=hour, minute=minute)
+    
+    # Set scheduler in app BEFORE starting threads
+    set_scheduler(scheduler)
+    
     def run_scheduler_thread():
         try:
-            run_scheduler(hour, minute)
+            scheduler.start()
+            # Keep scheduler running
+            while True:
+                sleep(1)
         except KeyboardInterrupt:
             pass
     
     def run_web_thread():
         try:
-            run_web_ui(host, port, debug=False)
+            app.run(host=host, port=port, debug=False)
         except KeyboardInterrupt:
             pass
     
@@ -103,7 +116,7 @@ def run_combined(hour: int = 23, minute: int = 0, host: str = "127.0.0.1", port:
     web_thread = Thread(target=run_web_thread, daemon=True)
     
     scheduler_thread.start()
-    sleep(1)  # Let scheduler start first
+    sleep(0.5)  # Brief delay to let scheduler start
     web_thread.start()
     
     try:

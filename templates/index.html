@@ -260,21 +260,126 @@
             background: #764ba2;
         }
 
+        .sync-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .sync-info {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .sync-info h3 {
+            color: #667eea;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .sync-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .sync-detail-item {
+            font-size: 0.9em;
+        }
+
+        .sync-detail-label {
+            color: #999;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .sync-detail-value {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sync-status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        .sync-status-dot.syncing {
+            animation: pulse 1s infinite;
+        }
+
+        .sync-status-dot.error {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .sync-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 500;
+            transition: all 0.3s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .sync-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .sync-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .sync-button.syncing {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+        }
+
         @media (max-width: 768px) {
-            .header h1 {
-                font-size: 1.8em;
+            .sync-card {
+                flex-direction: column;
+                align-items: flex-start;
             }
 
-            .chart-wrapper {
-                height: 300px;
-            }
-
-            .two-column {
+            .sync-details {
                 grid-template-columns: 1fr;
             }
 
-            .stats-grid {
-                grid-template-columns: 1fr;
+            .sync-button {
+                width: 100%;
+                text-align: center;
             }
         }
     </style>
@@ -291,6 +396,31 @@
         <div id="loading" class="loading">Loading data...</div>
 
         <div id="content" style="display: none;">
+            <!-- Sync Status Card -->
+            <div class="sync-card">
+                <div class="sync-info">
+                    <h3>⚙️ Sync Status</h3>
+                    <div class="sync-details">
+                        <div class="sync-detail-item">
+                            <div class="sync-detail-label">Last Sync</div>
+                            <div class="sync-detail-value">
+                                <span class="sync-status">
+                                    <span class="sync-status-dot" id="sync-status-dot"></span>
+                                    <span id="last-sync-time">—</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="sync-detail-item">
+                            <div class="sync-detail-label">Next Scheduled Sync</div>
+                            <div class="sync-detail-value" id="next-sync-time">—</div>
+                        </div>
+                    </div>
+                </div>
+                <button id="sync-trigger-btn" class="sync-button" onclick="triggerManualSync()">
+                    🔄 Sync Now
+                </button>
+            </div>
+
             <!-- Summary Statistics -->
             <div class="stats-grid">
                 <div class="stat-card">
@@ -410,6 +540,50 @@
     <script>
         let timeSeriesChart, dayOfWeekChart, highlowChart;
 
+        function destroyCharts() {
+            // Destroy our specific chart references
+            if (timeSeriesChart) {
+                try {
+                    timeSeriesChart.destroy();
+                } catch (e) {
+                    console.warn('Error destroying timeSeriesChart:', e);
+                }
+                timeSeriesChart = null;
+            }
+            if (dayOfWeekChart) {
+                try {
+                    dayOfWeekChart.destroy();
+                } catch (e) {
+                    console.warn('Error destroying dayOfWeekChart:', e);
+                }
+                dayOfWeekChart = null;
+            }
+            if (highlowChart) {
+                try {
+                    highlowChart.destroy();
+                } catch (e) {
+                    console.warn('Error destroying highlowChart:', e);
+                }
+                highlowChart = null;
+            }
+            
+            // Replace the canvas elements entirely
+            const chartsToReplace = [
+                'timeSeriesChart',
+                'dayOfWeekChart', 
+                'highlowChart'
+            ];
+            
+            chartsToReplace.forEach(chartId => {
+                const oldCanvas = document.getElementById(chartId);
+                if (oldCanvas) {
+                    const newCanvas = document.createElement('canvas');
+                    newCanvas.id = chartId;
+                    oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+                }
+            });
+        }
+
         async function loadData() {
             try {
                 const [data, summary, daily, trends, costs] = await Promise.all([
@@ -471,6 +645,9 @@
         }
 
         function renderCharts(data, daily, summary) {
+            // Destroy any existing charts before creating new ones
+            destroyCharts();
+            
             // Time series chart
             const timeSeriesCtx = document.getElementById('timeSeriesChart').getContext('2d');
             const avg30 = summary.last30Days.average;
@@ -795,8 +972,131 @@
             isPanning = false;
         }
 
+        // Sync status functions
+        async function loadSyncInfo() {
+            try {
+                const response = await fetch('/api/sync/info');
+                const syncInfo = await response.json();
+                updateSyncDisplay(syncInfo);
+            } catch (error) {
+                console.error('Error loading sync info:', error);
+                // Set default display if API call fails
+                document.getElementById('last-sync-time').textContent = 'Unknown';
+                document.getElementById('next-sync-time').textContent = 'Unknown';
+            }
+        }
+
+        function updateSyncDisplay(syncInfo) {
+            const lastSyncEl = document.getElementById('last-sync-time');
+            const nextSyncEl = document.getElementById('next-sync-time');
+            const statusDotEl = document.getElementById('sync-status-dot');
+            
+            // Update last sync time
+            if (syncInfo.last_sync) {
+                const lastSyncDate = new Date(syncInfo.last_sync);
+                lastSyncEl.textContent = lastSyncDate.toLocaleString();
+            } else {
+                lastSyncEl.textContent = 'Never synced';
+            }
+            
+            // Update next sync time
+            if (syncInfo.next_scheduled_sync) {
+                const nextSyncDate = new Date(syncInfo.next_scheduled_sync);
+                nextSyncEl.textContent = nextSyncDate.toLocaleString();
+            } else {
+                nextSyncEl.textContent = 'Not scheduled';
+            }
+            
+            // Update status indicator
+            statusDotEl.classList.remove('syncing', 'error');
+            statusDotEl.classList.add(syncInfo.sync_status);
+        }
+
+        async function triggerManualSync() {
+            const btn = document.getElementById('sync-trigger-btn');
+            const statusDotEl = document.getElementById('sync-status-dot');
+            
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.classList.add('syncing');
+            btn.textContent = '🔄 Syncing...';
+            
+            try {
+                const response = await fetch('/api/sync/trigger', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok || response.status === 202) {
+                    // Sync started successfully
+                    statusDotEl.classList.add('syncing');
+                    
+                    // Poll for sync completion (up to 2 minutes)
+                    let attempts = 0;
+                    const maxAttempts = 24; // 24 * 5 seconds = 120 seconds
+                    
+                    const pollInterval = setInterval(async () => {
+                        attempts++;
+                        
+                        try {
+                            const syncResponse = await fetch('/api/sync/info');
+                            const syncInfo = await syncResponse.json();
+                            
+                            updateSyncDisplay(syncInfo);
+                            
+                            // If sync is complete, stop polling
+                            if (syncInfo.sync_status !== 'syncing') {
+                                clearInterval(pollInterval);
+                                btn.disabled = false;
+                                btn.classList.remove('syncing');
+                                btn.textContent = '🔄 Sync Now';
+                                statusDotEl.classList.remove('syncing');
+                                
+                                // Reload main data to show latest
+                                await loadData();
+                                
+                                return;
+                            }
+                        } catch (error) {
+                            console.error('Error polling sync status:', error);
+                        }
+                        
+                        if (attempts >= maxAttempts) {
+                            clearInterval(pollInterval);
+                            btn.disabled = false;
+                            btn.classList.remove('syncing');
+                            btn.textContent = '🔄 Sync Now';
+                        }
+                    }, 5000); // Poll every 5 seconds
+                    
+                } else {
+                    // Error starting sync
+                    statusDotEl.classList.add('error');
+                    btn.disabled = false;
+                    btn.classList.remove('syncing');
+                    btn.textContent = '🔄 Sync Now';
+                    console.error('Error triggering sync:', result.error || 'Unknown error');
+                }
+            } catch (error) {
+                console.error('Error triggering manual sync:', error);
+                statusDotEl.classList.add('error');
+                btn.disabled = false;
+                btn.classList.remove('syncing');
+                btn.textContent = '🔄 Sync Now';
+            }
+        }
+
         // Load data on page load
-        document.addEventListener('DOMContentLoaded', loadData);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            loadSyncInfo();
+            // Refresh sync info every 30 seconds
+            setInterval(loadSyncInfo, 30000);
+        });
     </script>
 </body>
 </html>

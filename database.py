@@ -48,6 +48,24 @@ def init_db() -> None:
         )
     """)
     
+    # Create sync_info table to track sync status
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sync_info (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            last_sync_timestamp TIMESTAMP,
+            next_scheduled_sync TIMESTAMP,
+            sync_status TEXT DEFAULT 'idle'
+        )
+    """)
+    
+    # Ensure we have at least one row in sync_info
+    cursor.execute("SELECT COUNT(*) FROM sync_info")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            INSERT INTO sync_info (sync_status)
+            VALUES ('idle')
+        """)
+    
     conn.commit()
     conn.close()
 
@@ -533,3 +551,72 @@ def get_cost_trend(days: int = 30) -> Dict:
         "cost_change_amount": round(second_period_cost - first_period_cost, 2),
         "cost_change_percent": round(cost_change_pct, 1)
     }
+
+
+def get_sync_info() -> Dict:
+    """Get current sync information (last sync and next scheduled sync)."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT last_sync_timestamp, next_scheduled_sync, sync_status
+        FROM sync_info
+        LIMIT 1
+    """)
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if result:
+        return {
+            "last_sync": result[0],
+            "next_scheduled_sync": result[1],
+            "sync_status": result[2]
+        }
+    else:
+        return {
+            "last_sync": None,
+            "next_scheduled_sync": None,
+            "sync_status": "idle"
+        }
+
+
+def update_sync_info(last_sync_timestamp: str = None, next_scheduled_sync: str = None, sync_status: str = None) -> None:
+    """Update sync information."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Build update query dynamically
+    updates = []
+    params = []
+    
+    if last_sync_timestamp is not None:
+        updates.append("last_sync_timestamp = ?")
+        params.append(last_sync_timestamp)
+    
+    if next_scheduled_sync is not None:
+        updates.append("next_scheduled_sync = ?")
+        params.append(next_scheduled_sync)
+    
+    if sync_status is not None:
+        updates.append("sync_status = ?")
+        params.append(sync_status)
+    
+    if updates:
+        query = "UPDATE sync_info SET " + ", ".join(updates)
+        cursor.execute(query, params)
+        conn.commit()
+    
+    conn.close()
+
+
+def record_sync_start() -> None:
+    """Record that a sync has started."""
+    update_sync_info(sync_status='syncing')
+
+
+def record_sync_complete() -> None:
+    """Record that a sync has completed successfully."""
+    from datetime import datetime
+    now = datetime.now().isoformat()
+    update_sync_info(last_sync_timestamp=now, sync_status='idle')

@@ -22,7 +22,7 @@ from ecotricity import (
     calculate_date_range,
     create_payload,
 )
-from database import init_db, insert_consumption_data, record_fetch_attempt, get_missing_date_ranges, get_last_backfill_date
+from database import init_db, insert_consumption_data, record_fetch_attempt, get_missing_date_ranges, get_last_backfill_date, record_sync_start, record_sync_complete, update_sync_info
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +67,7 @@ class ConsumptionScheduler:
     def fetch_and_store(self) -> None:
         """Fetch consumption data and store it in the database."""
         try:
+            record_sync_start()
             self.console.print(f"\n[cyan][{datetime.now().isoformat()}] Starting scheduled fetch...[/cyan]")
             
             session = self._get_session()
@@ -75,8 +76,8 @@ class ConsumptionScheduler:
             init_consumption_page(session)
             init_data(session)
             
-            # Fetch last 7 days by default
-            date_from, date_to = calculate_date_range("last 7 days")
+            # Fetch last 30 days by default
+            date_from, date_to = calculate_date_range("last 30 days")
             payload = create_payload(date_from, date_to)
             
             # Fetch data
@@ -89,14 +90,18 @@ class ConsumptionScheduler:
                 # Record successful fetch
                 for row in rows:
                     record_fetch_attempt(row["date"], success=True)
+                record_sync_complete()
             else:
                 self.console.print("[yellow]⚠ No data returned from API[/yellow]")
+                record_sync_complete()
                 
         except Exception as e:
             self.console.print(f"[red]✗ Scheduled fetch failed: {e}[/red]")
             logger.exception("Scheduled fetch failed")
             # Try to reset session on error
             self._session = None
+            # Record sync error but still mark it as no longer syncing
+            update_sync_info(sync_status='idle')
     
     def backfill_consumption(self, start_date: str = None, end_date: str = None, max_attempts: int = 5) -> None:
         """
