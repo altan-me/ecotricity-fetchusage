@@ -257,7 +257,7 @@ http://127.0.0.1:5000
    - All-time average costs
 
 3. **Charts**
-   - Time series line chart with trend line
+   - Time series line chart with trend line (all available data with horizontal scrolling)
    - Day-of-week bar chart
    - High/Low distribution (doughnut chart)
 

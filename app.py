@@ -58,9 +58,25 @@ def index():
 
 @app.route("/api/data")
 def api_data():
-    """Get consumption data for the chart."""
-    days = 30  # Default to last 30 days
-    rows = get_consumption_by_range(days)
+    """Get consumption data for the chart.
+    
+    Query parameters:
+        days: Number of days to retrieve (default: all)
+              Use 'all' or omit to get all available data
+              Use a number (e.g., 30) to get last N days
+    """
+    days_param = request.args.get('days', 'all').lower()
+    
+    # Determine which data to fetch
+    if days_param == 'all':
+        rows = get_all_consumption()
+    else:
+        try:
+            days = int(days_param)
+            rows = get_consumption_by_range(days)
+        except ValueError:
+            # Default to all if parameter is invalid
+            rows = get_all_consumption()
     
     return jsonify({
         "dates": [r["date"] for r in rows],

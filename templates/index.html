@@ -170,7 +170,6 @@
         }
 
         .chart-wrapper > canvas {
-            min-width: 100%;
             display: block;
         }
 
@@ -591,7 +590,7 @@
                     <button onclick="zoomChart(1.2)">🔍 Zoom In</button>
                     <button onclick="zoomChart(0.8)">🔍 Zoom Out</button>
                     <button onclick="resetChart()">↺ Reset View</button>
-                    <span class="zoom-info">💡 Scroll horizontally to see older data • Scroll wheel or drag to zoom • Use controls above</span>
+                    <span class="zoom-info">💡 Showing all available data • Scroll horizontally to see older data • Scroll wheel or drag to zoom</span>
                 </div>
                 <div class="chart-wrapper">
                     <canvas id="timeSeriesChart"></canvas>
@@ -705,7 +704,7 @@
         async function loadData() {
             try {
                 const [data, summary, daily, trends, costs] = await Promise.all([
-                    fetch('/api/data').then(r => r.json()),
+                    fetch('/api/data?days=all').then(r => r.json()),
                     fetch('/api/summary').then(r => r.json()),
                     fetch('/api/daily-breakdown').then(r => r.json()),
                     fetch('/api/trends').then(r => r.json()),
@@ -773,7 +772,16 @@
             
             // Time series chart
             const timeSeriesCanvas = document.getElementById('timeSeriesChart');
-            timeSeriesCanvas.style.minWidth = minCanvasWidth + 'px';
+            const wrapper = timeSeriesCanvas.parentElement;
+            
+            // Set proper canvas dimensions to avoid blurriness
+            // Canvas needs width/height attributes for proper resolution
+            const wrapperHeight = 400; // Match .chart-wrapper height
+            timeSeriesCanvas.width = minCanvasWidth;
+            timeSeriesCanvas.height = wrapperHeight;
+            timeSeriesCanvas.style.width = minCanvasWidth + 'px';
+            timeSeriesCanvas.style.height = wrapperHeight + 'px';
+            
             const timeSeriesCtx = timeSeriesCanvas.getContext('2d');
             const avg30 = summary.last30Days.average;
             
@@ -808,7 +816,7 @@
                     ]
                 },
                 options: {
-                    responsive: true,
+                    responsive: false,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
