@@ -163,11 +163,45 @@
             position: relative;
             height: 400px;
             margin-bottom: 30px;
-            overflow: auto;
+            overflow-x: auto;
+            overflow-y: hidden;
+            border-radius: 8px;
+            scroll-behavior: smooth;
+        }
+
+        .chart-wrapper > canvas {
+            min-width: 100%;
+            display: block;
         }
 
         .chart-wrapper.small {
             height: 300px;
+        }
+
+        /* Scrollbar styling */
+        .chart-wrapper::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .chart-wrapper::-webkit-scrollbar-track {
+            background: #f0f0f0;
+            border-radius: 8px;
+        }
+
+        .chart-wrapper::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+
+        .chart-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+
+        /* Firefox scrollbar */
+        .chart-wrapper {
+            scrollbar-color: #667eea #f0f0f0;
+            scrollbar-width: thin;
         }
 
         .chart-controls {
@@ -196,8 +230,12 @@
 
         .zoom-info {
             font-size: 0.85em;
-            color: #999;
+            color: #666;
             font-style: italic;
+            background: #f9f9f9;
+            padding: 6px 12px;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
         }
 
         .two-column {
@@ -553,7 +591,7 @@
                     <button onclick="zoomChart(1.2)">🔍 Zoom In</button>
                     <button onclick="zoomChart(0.8)">🔍 Zoom Out</button>
                     <button onclick="resetChart()">↺ Reset View</button>
-                    <span class="zoom-info">Scroll or drag to navigate through data</span>
+                    <span class="zoom-info">💡 Scroll horizontally to see older data • Scroll wheel or drag to zoom • Use controls above</span>
                 </div>
                 <div class="chart-wrapper">
                     <canvas id="timeSeriesChart"></canvas>
@@ -728,8 +766,15 @@
             // Destroy any existing charts before creating new ones
             destroyCharts();
             
+            // Calculate canvas width based on number of data points
+            // Ensure at least 60px per data point for readability
+            const dataPointCount = data.dates.length;
+            const minCanvasWidth = Math.max(100, dataPointCount * 60);
+            
             // Time series chart
-            const timeSeriesCtx = document.getElementById('timeSeriesChart').getContext('2d');
+            const timeSeriesCanvas = document.getElementById('timeSeriesChart');
+            timeSeriesCanvas.style.minWidth = minCanvasWidth + 'px';
+            const timeSeriesCtx = timeSeriesCanvas.getContext('2d');
             const avg30 = summary.last30Days.average;
             
             timeSeriesChart = new Chart(timeSeriesCtx, {
