@@ -211,6 +211,14 @@ python run.py web --host 0.0.0.0 --port 8000
 python run.py web --debug
 ```
 
+**Supported Date Presets in Dashboard:**
+The web UI displays data using these supported date ranges:
+- `last 2 days`
+- `last 7 days` (default)
+- `last 30 days`
+- `last month`
+- `last 3 months`
+
 ### Original CLI Usage
 
 The original command-line interface is still available:
@@ -409,7 +417,11 @@ print(f"Data range: {start} to {end}")
 
 - **Portal**: https://portal.ecotricity.co.nz/powercommerce/eco/fo/portal
 - **Data Endpoint**: `/analysis/valueRequest`
-- **Default Granularity**: Daily consumption
+- **Supported dateTypes**: 
+  - `DAY` - Single day only, returns HALF_HOUR granularity (30-minute intervals)
+  - `WEEK` - 1-7 day ranges, returns DAY granularity
+  - `MONTH` - Any date range, returns DAY granularity
+- **Default Granularity**: DAY (daily consumption) for ranges over 1 day
 - **Metric**: `POWER_ACTIVE_PURCHASE_CONSUMPTION`
 - **Timezone**: Pacific/Auckland
 

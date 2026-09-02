@@ -61,8 +61,8 @@ def main():
             init_consumption_page(session)
             init_data(session)
             
-            date_from, date_to = calculate_date_range("last 7 days")
-            payload = create_payload(date_from, date_to)
+            date_from, date_to, date_type = calculate_date_range("last 7 days")
+            payload = create_payload(date_from, date_to, date_type)
             
             data = fetch_data(session, payload)
             rows = parse_values(data)

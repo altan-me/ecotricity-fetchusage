@@ -82,8 +82,8 @@ class ConsumptionScheduler:
             init_data(session)
             
             # Fetch with specified date range
-            date_from, date_to = calculate_date_range(date_range)
-            payload = create_payload(date_from, date_to)
+            date_from, date_to, date_type = calculate_date_range(date_range)
+            payload = create_payload(date_from, date_to, date_type)
             
             # Fetch data
             data = fetch_data(session, payload)
@@ -148,7 +148,8 @@ class ConsumptionScheduler:
                     date_from = start_dt.strftime("%Y-%m-%dT00:00:00.000") + "+02:00"
                     date_to = end_dt.strftime("%Y-%m-%dT00:00:00.000") + "+02:00"
                     
-                    payload = create_payload(date_from, date_to)
+                    # Use MONTH dateType for backfill ranges (works for any date range)
+                    payload = create_payload(date_from, date_to, "MONTH")
                     
                     # Fetch data
                     data = fetch_data(session, payload)

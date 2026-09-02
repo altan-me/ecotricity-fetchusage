@@ -33,21 +33,38 @@ DATA_URL = f"{BASE_URL}/analysis/valueRequest"
 INDICATOR_ID = "470f2d40-42ca-11f1-9ba3-020017005c7e"
 TIMEZONE_OFFSET = "+02:00"  # Adjust for your timezone (e.g., +00:00 for UTC, +13:00 for NZDT)
 
+# ⚠️  IMPORTANT API DETAILS:
+# The Ecotricity API supports three dateTypes for consumption queries:
+#   - "DAY": Single day only, returns HALF_HOUR granularity (30-minute intervals)
+#   - "WEEK": 1-7 day ranges, returns DAY granularity
+#   - "MONTH": Any date range, returns DAY granularity
+# This code uses WEEK for short ranges and MONTH for longer ranges.
+# DAY type is available for fetching single-day data with higher time resolution.
+# See create_payload() for the official payload structure with full documentation.
+
 # ⚠️  IMPORTANT: If you get "No metering data available" (503), the date range likely has no data.
 # Check your account in the Ecotricity portal to see what date ranges contain data.
 
 # ── Date Range ────────────────────────────────────────────────────────────────
 
 
-def calculate_date_range(preset: str) -> tuple[str, str]:
-    """Calculate date range from a preset string.
+def calculate_date_range(preset: str) -> tuple[str, str, str]:
+    """Calculate date range and appropriate dateType from a preset string.
+    
+    The Ecotricity API supports three dateTypes:
+      - DAY: Single day only, returns HALF_HOUR granularity data
+      - WEEK: 1-7 day ranges, returns DAY granularity data
+      - MONTH: Any range, returns DAY granularity data
     
     Presets:
-      - 'last 2 days': Last 2 calendar days
-      - 'last 7 days': Last 7 calendar days
-      - 'last 30 days': Last 30 calendar days
-      - 'last month': All of last calendar month
-      - 'last 3 months': Last 3 calendar months
+      - 'last 2 days': Last 2 calendar days (dateType: WEEK, DAY granularity)
+      - 'last 7 days': Last 7 calendar days (dateType: WEEK, DAY granularity)
+      - 'last 30 days': Last 30 calendar days (dateType: MONTH, DAY granularity)
+      - 'last month': All of last calendar month (dateType: MONTH, DAY granularity)
+      - 'last 3 months': Last 3 calendar months (dateType: MONTH, DAY granularity)
+    
+    Returns:
+        tuple: (date_from, date_to, dateType)
     """
     console = Console()
     now = datetime.now()
@@ -55,12 +72,15 @@ def calculate_date_range(preset: str) -> tuple[str, str]:
     if preset == "last 2 days":
         end = now.replace(hour=0, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=2)
+        date_type = "WEEK"
     elif preset == "last 7 days":
         end = now.replace(hour=0, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=7)
+        date_type = "WEEK"
     elif preset == "last 30 days":
         end = now.replace(hour=0, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=30)
+        date_type = "MONTH"
     elif preset == "last month":
         # First day of current month
         first_of_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -69,6 +89,7 @@ def calculate_date_range(preset: str) -> tuple[str, str]:
         start = start.replace(day=1)
         # Last day of last month (day before first of this month)
         end = first_of_this_month
+        date_type = "MONTH"
     elif preset == "last 3 months":
         end = now.replace(hour=0, minute=0, second=0, microsecond=0)
         # Go back 3 months
@@ -78,6 +99,7 @@ def calculate_date_range(preset: str) -> tuple[str, str]:
             month += 12
             year -= 1
         start = now.replace(year=year, month=month, day=1, hour=0, minute=0, second=0, microsecond=0)
+        date_type = "MONTH"
     else:
         console.print(f"[red]Unknown preset: {preset}[/red]", style="red")
         console.print("Valid presets: 'last 2 days', 'last 7 days', 'last 30 days', 'last month', 'last 3 months'")
@@ -87,31 +109,74 @@ def calculate_date_range(preset: str) -> tuple[str, str]:
     date_from = start.strftime("%Y-%m-%dT00:00:00.000") + TIMEZONE_OFFSET
     date_to = end.strftime("%Y-%m-%dT00:00:00.000") + TIMEZONE_OFFSET
     
-    console.print(f"\n  📅 Date Range: {start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}")
+    console.print(f"\n  📅 Date Range: {start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')} (dateType: {date_type})")
     
-    return date_from, date_to
+    return date_from, date_to, date_type
 
 
-def create_payload(date_from: str, date_to: str) -> dict:
-    """Create the API payload with the given date range."""
+def create_payload(date_from: str, date_to: str, date_type: str = "MONTH") -> dict:
+    """Create the official Ecotricity API payload for consumption data.
+    
+    This payload follows the Ecotricity portal's API format for fetching power
+    consumption data. The dateType is set based on the requested date range:
+      - WEEK: For 1-7 day ranges (DAY granularity)
+      - MONTH: For any range (DAY granularity)
+      - DAY: For single day only (HALF_HOUR granularity)
+    
+    Args:
+        date_from: Start date in ISO format with timezone (e.g., "2026-08-01T00:00:00.000+02:00")
+        date_to: End date in ISO format with timezone (e.g., "2026-09-01T00:00:00.000+02:00")
+        date_type: API dateType to use - "DAY" (single day only), "WEEK" (1-7 days), or "MONTH" (any range)
+    
+    Returns:
+        dict: API payload with the following structure:
+        - dateType: "DAY", "WEEK", or "MONTH" - Aggregation type based on date range
+        - indicatorValueRequests: Array containing indicator configuration
+          - valueRange: Dict mapping date_from to date_to (period to fetch)
+          - indicatorID: Unique ID for the metering point
+          - indicatorType: "INDICATOR_GROUP" - Fetches data for the meter group
+          - featureValueRequests: Array specifying consumption metric
+            - featureID: "POWER_ACTIVE_PURCHASE_CONSUMPTION" - Active power purchase (consumption)
+            - granularityType: "HALF_HOUR" (DAY type) or "DAY" (WEEK/MONTH types)
+            - aggregationType: "SUM" - Aggregate consumption over each period
+        - userTimeZone: "Pacific/Auckland" - Timezone for date interpretation
+    """
+    # Select granularityType based on dateType
+    # DAY type returns HALF_HOUR granularity, WEEK/MONTH return DAY granularity
+    granularity = "HALF_HOUR" if date_type == "DAY" else "DAY"
     return {
-        "dateType": "MONTH",
+        "dateType": date_type,  # DAY (single day), WEEK (1-7 days), or MONTH (any range)
         "indicatorValueRequests": [
             {
+                # valueRange: Period to fetch (keys and values are ISO dates with timezone)
+                # DAY type: must be a single day (e.g., 2026-08-30 to 2026-08-31)
+                # WEEK type: 1-7 day range
+                # MONTH type: any range
                 "valueRange": {date_from: date_to},
+                # Unique identifier for this metering installation point
                 "indicatorID": INDICATOR_ID,
+                # INDICATOR_GROUP fetches data for the entire meter group
                 "indicatorType": "INDICATOR_GROUP",
+                # Index 0 for primary request
                 "index": 0,
+                # Feature configuration: what metric to fetch and how to aggregate it
                 "featureValueRequests": [
                     {
+                        # POWER_ACTIVE_PURCHASE_CONSUMPTION: the electricity consumption metric
                         "featureID": "POWER_ACTIVE_PURCHASE_CONSUMPTION",
-                        "granularityType": "DAY",
+                        # Granularity varies by dateType:
+                        # - DAY type: HALF_HOUR (detailed 30-minute intervals)
+                        # - WEEK/MONTH types: DAY (daily data)
+                        "granularityType": granularity,
+                        # No attribute filters needed for basic consumption data
                         "filterByIndicatorAttributesMap": {},
+                        # SUM: aggregate consumption for each period
                         "aggregationType": "SUM",
                     }
                 ],
             }
         ],
+        # Timezone context for all dates in the payload
         "userTimeZone": "Pacific/Auckland",
     }
 
@@ -270,10 +335,20 @@ def init_data(session: requests.Session) -> None:
 
 
 def fetch_data(session: requests.Session, payload: dict) -> dict:
+    """Fetch consumption data from Ecotricity API using the official payload format.
+    
+    The payload follows the Ecotricity API format with three supported dateTypes:
+    - dateType: "DAY" (single day, HALF_HOUR granularity), "WEEK" (1-7 days, DAY granularity), or "MONTH" (any range, DAY granularity)
+    - indicatorValueRequests: Contains the date range, meter ID, and feature config
+    - featureValueRequests: Specifies POWER_ACTIVE_PURCHASE_CONSUMPTION with granularity based on dateType
+    - userTimeZone: Pacific/Auckland for date interpretation
+    """
     console = Console()
     
     console.print(f"\n  [DEBUG] Fetching data with cookies: {dict(session.cookies)}")
     console.print(f"  [DEBUG] Data fetch URL: {DATA_URL}")
+    console.print(f"  [DEBUG] Payload dateType: {payload.get('dateType', 'UNKNOWN')}")
+    console.print(f"  [DEBUG] Payload userTimeZone: {payload.get('userTimeZone', 'UNKNOWN')}")
     
     request_headers = {
         "accept": "application/json, text/javascript, */*; q=0.01",
@@ -447,9 +522,9 @@ Examples:
     # Load environment variables from .env file
     load_dotenv()
     
-    # Calculate date range
-    date_from, date_to = calculate_date_range(args.dates)
-    payload = create_payload(date_from, date_to)
+    # Calculate date range and determine appropriate dateType
+    date_from, date_to, date_type = calculate_date_range(args.dates)
+    payload = create_payload(date_from, date_to, date_type)
     
     login, password = get_credentials()
 
