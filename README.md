@@ -373,6 +373,34 @@ ecotricity-fetchusage/
 - The date range doesn't contain any data in your account
 - Check the Ecotricity portal for available date ranges
 - Try a different date range
+- This is a *business* response, so the client does **not** retry it
+
+### Transient 429/5xx from the portal (e.g. bare "503")
+The portal's edge returns occasional `429`/`500`/`502`/`503`/`504` responses,
+more often from a datacenter/container IP than a home connection. The client now:
+- retries those statuses with exponential backoff and jitter, honouring `Retry-After`
+- re-logs in and retries once per scheduled fetch if a session goes stale
+- treats the portal's `503 "No metering data available"` as a business answer instead of an outage
+- spaces out backfill requests to avoid tripping rate limiting
+
+If 503s persist, the portal (or its WAF) may be blocking the container's source IP.
+Check the container logs for the retry lines, and if needed run from another host/VPN.
+
+### Wrong / empty date ranges in Docker
+Containers usually run in UTC. The client renders every date in the
+`Pacific/Auckland` offset for that specific date (NZST/NZDT aware) rather than
+trusting the host clock, so date ranges are correct regardless of container TZ.
+Override with `ECOTRICITY_TIMEZONE` if needed.
+
+### Reliability tuning (environment variables)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ECOTRICITY_TIMEZONE` | `Pacific/Auckland` | Timezone used to build API date ranges |
+| `ECOTRICITY_TIMEOUT` | `30` | Per-request timeout (seconds) |
+| `ECOTRICITY_MAX_ATTEMPTS` | `4` | Total attempts per request (1 = no retries) |
+| `ECOTRICITY_BACKOFF_BASE` | `2.0` | Exponential backoff base (seconds) |
+| `ECOTRICITY_BACKOFF_CAP` | `30` | Maximum backoff delay (seconds) |
+| `ECOTRICITY_BATCH_DELAY` | `1.5` | Pause between backfill requests (seconds) |
 
 ### Login Failed
 - Verify your account number and password are correct

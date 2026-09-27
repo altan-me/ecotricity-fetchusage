@@ -7,8 +7,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 from rich.console import Console
+import random
 import sys
 import os
+import time
 from dotenv import load_dotenv
 
 # Import from main script
@@ -21,6 +23,10 @@ from ecotricity import (
     parse_values,
     calculate_date_range,
     create_payload,
+    format_portal_datetime,
+    EcotricityError,
+    EcotricityNoDataError,
+    BATCH_DELAY,
 )
 from database import init_db, insert_consumption_data, record_fetch_attempt, get_missing_date_ranges, get_last_backfill_date, record_sync_start, record_sync_complete, update_sync_info
 
@@ -63,7 +69,20 @@ class ConsumptionScheduler:
                 raise ValueError("Login and password must be provided or set as environment variables")
             self._session = create_session(self.login, self.password)
         return self._session
-    
+
+    def _fetch_rows(self, date_range: str) -> list:
+        """Perform one full fetch cycle and return the parsed rows."""
+        session = self._get_session()
+
+        init_consumption_page(session)
+        init_data(session)
+
+        date_from, date_to, date_type = calculate_date_range(date_range)
+        payload = create_payload(date_from, date_to, date_type)
+
+        data = fetch_data(session, payload)
+        return parse_values(data)
+
     def fetch_and_store(self, date_range: str = "last 30 days") -> None:
         """Fetch consumption data and store it in the database.
         
@@ -74,31 +93,38 @@ class ConsumptionScheduler:
         try:
             record_sync_start()
             self.console.print(f"\n[cyan][{datetime.now().isoformat()}] Starting scheduled fetch ({date_range})...[/cyan]")
-            
-            session = self._get_session()
-            
-            # Initialize consumption page and data
-            init_consumption_page(session)
-            init_data(session)
-            
-            # Fetch with specified date range
-            date_from, date_to, date_type = calculate_date_range(date_range)
-            payload = create_payload(date_from, date_to, date_type)
-            
-            # Fetch data
-            data = fetch_data(session, payload)
-            rows = parse_values(data)
-            
+
+            rows = []
+            # Retry once with a brand new session: a stale cookie or a transient
+            # portal/WAF 503 is the most common cause of a scheduled failure.
+            for attempt in (1, 2):
+                try:
+                    rows = self._fetch_rows(date_range)
+                    break
+                except EcotricityNoDataError as exc:
+                    self.console.print(f"[yellow]⚠ {exc}[/yellow]")
+                    rows = []
+                    break
+                except EcotricityError as exc:
+                    self.console.print(
+                        f"[yellow]⚠ Fetch attempt {attempt}/2 failed: {exc}[/yellow]"
+                    )
+                    # Drop the session so the retry performs a fresh login.
+                    self._session = None
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 + random.random())
+
             if rows:
                 insert_consumption_data(rows)
                 self.console.print(f"[green]✓ Fetched and stored {len(rows)} records[/green]")
                 # Record successful fetch
                 for row in rows:
                     record_fetch_attempt(row["date"], success=True)
-                record_sync_complete()
             else:
                 self.console.print("[yellow]⚠ No data returned from API[/yellow]")
-                record_sync_complete()
+
+            record_sync_complete()
                 
         except Exception as e:
             self.console.print(f"[red]✗ Scheduled fetch failed: {e}[/red]")
@@ -137,6 +163,10 @@ class ConsumptionScheduler:
             
             # Process up to max_attempts ranges
             for i, (range_start, range_end) in enumerate(missing_ranges[:max_attempts]):
+                # Space out requests so we don't trip the portal's rate limiting.
+                if i > 0:
+                    time.sleep(BATCH_DELAY + random.random())
+
                 self.console.print(f"\n[cyan]Backfilling {i+1}/{min(len(missing_ranges), max_attempts)}: {range_start} to {range_end}[/cyan]")
                 
                 try:
@@ -144,9 +174,9 @@ class ConsumptionScheduler:
                     start_dt = datetime.strptime(range_start, "%Y-%m-%d")
                     end_dt = datetime.strptime(range_end, "%Y-%m-%d")
                     
-                    # Format dates for API (add timezone)
-                    date_from = start_dt.strftime("%Y-%m-%dT00:00:00.000") + "+02:00"
-                    date_to = end_dt.strftime("%Y-%m-%dT00:00:00.000") + "+02:00"
+                    # Format dates for API (correct offset for the portal timezone)
+                    date_from = format_portal_datetime(start_dt)
+                    date_to = format_portal_datetime(end_dt)
                     
                     # Use MONTH dateType for backfill ranges (works for any date range)
                     payload = create_payload(date_from, date_to, "MONTH")
@@ -169,7 +199,7 @@ class ConsumptionScheduler:
                     self.console.print(f"[red]✗ Backfill failed for {range_start} to {range_end}: {e}[/red]")
                     logger.exception(f"Backfill failed for range {range_start} to {range_end}")
                     record_fetch_attempt(range_end, success=False, error_message=str(e))
-                    # Reset session on error
+                    # Reset session so the next range re-authenticates
                     self._session = None
             
             if len(missing_ranges) > max_attempts:

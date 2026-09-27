@@ -3,4 +3,7 @@ python-dotenv>=1.0.0
 rich>=13.0.0
 flask>=2.3.0
 apscheduler>=3.10.0
+# Timezone database for zoneinfo (Pacific/Auckland). Guarantees correct date
+# offsets on Windows and in slim containers that ship without system tzdata.
+tzdata>=2024.1
 

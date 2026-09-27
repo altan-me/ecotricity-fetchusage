@@ -169,22 +169,32 @@ def fetch_once(date_preset: str = "last 7 days") -> None:
             parse_values,
             calculate_date_range,
             create_payload,
+            EcotricityNoDataError,
+            EcotricityError,
         )
         from database import init_db, insert_consumption_data
         
         init_db()
         
         login, password = get_credentials()
-        session = create_session(login, password)
-        
-        init_consumption_page(session)
-        init_data(session)
-        
-        date_from, date_to, date_type = calculate_date_range(date_preset)
-        payload = create_payload(date_from, date_to, date_type)
-        
-        data = fetch_data(session, payload)
-        rows = parse_values(data)
+
+        try:
+            session = create_session(login, password)
+
+            init_consumption_page(session)
+            init_data(session)
+
+            date_from, date_to, date_type = calculate_date_range(date_preset)
+            payload = create_payload(date_from, date_to, date_type)
+
+            data = fetch_data(session, payload)
+            rows = parse_values(data)
+        except EcotricityNoDataError as e:
+            console.print(f"[yellow]⚠ {e}[/yellow]")
+            return
+        except EcotricityError as e:
+            console.print(f"[red]✗ {e}[/red]")
+            sys.exit(1)
         
         if rows:
             insert_consumption_data(rows)
