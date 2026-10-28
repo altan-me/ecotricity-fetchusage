@@ -16,7 +16,7 @@ Fetches your power consumption from the Ecotricity portal, stores it in SQLite, 
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.15+
 - Dependencies: `requests`, `python-dotenv`, `rich`, `flask`, `apscheduler`, `tzdata`
 
 ```bash
