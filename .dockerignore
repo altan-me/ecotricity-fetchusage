@@ -27,6 +27,7 @@ htmlcov/
 *.swo
 *~
 README.md
+LICENSE
 docs/
 .gitattributes
 Dockerfile
