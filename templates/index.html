@@ -726,11 +726,11 @@
 
         function updateStats(summary, trends, costs) {
             const last30 = summary.last30Days;
-            document.getElementById('stat-total-30').textContent = last30.total;
-            document.getElementById('stat-avg-30').textContent = last30.average;
-            document.getElementById('stat-min-30').textContent = last30.min;
-            document.getElementById('stat-max-30').textContent = last30.max;
-            document.getElementById('stat-range-30').textContent = `${last30.max - last30.min}`;
+            document.getElementById('stat-total-30').textContent = last30.total.toFixed(2);
+            document.getElementById('stat-avg-30').textContent = last30.average.toFixed(2);
+            document.getElementById('stat-min-30').textContent = last30.min.toFixed(2);
+            document.getElementById('stat-max-30').textContent = last30.max.toFixed(2);
+            document.getElementById('stat-range-30').textContent = (last30.max - last30.min).toFixed(2);
 
             const trend = trends.trend30Days;
             const trendEl = document.getElementById('stat-trend');
