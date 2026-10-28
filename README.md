@@ -2,8 +2,8 @@
 
 Fetches your power consumption from the Ecotricity portal, stores it in SQLite, and serves an interactive dashboard.
 
-![Dashboard overview](docs/images/dashboard_example1.jpg)
-![Dashboard charts](docs/images/dashboard_example2.jpg)
+![Dashboard overview](docs/images/dashboard_example1.webp)
+![Dashboard charts](docs/images/dashboard_example2.webp)
 
 ## Features
 
