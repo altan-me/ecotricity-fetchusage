@@ -1,348 +1,206 @@
 # ⚡ Ecotricity Consumption Tracker
 
-A comprehensive Python system to automatically fetch your power consumption data from the Ecotricity portal, store it in a local database, and visualize it with an interactive web dashboard.
+Fetches your power consumption from the Ecotricity portal, stores it in SQLite, and serves an interactive dashboard.
+
+![Dashboard overview](docs/images/dashboard_example1.jpg)
+![Dashboard charts](docs/images/dashboard_example2.jpg)
 
 ## Features
 
-### Core Features
-- 🔐 **Secure Authentication**: Automatically logs into your Ecotricity account
-- 📊 **Data Fetching**: Retrieves daily power consumption data from the Ecotricity API
-- 💾 **Local Database**: Stores consumption data in SQLite for historical tracking
-- 📈 **Interactive Dashboard**: Beautiful web UI with real-time visualizations
-- 🔄 **Scheduled Updates**: Automatic periodic fetching of new consumption data
-
-### Dashboard Features
-- 📊 **Time Series Visualization**: View consumption trends over time
-- 📉 **Statistical Analysis**: Average, min, max, and trending insights
-- 📍 **Day of Week Breakdown**: See which days typically use more power
-- 🎯 **High/Low Analysis**: Identify your consumption patterns
-- 📥 **Data Export**: Download data as JSON or CSV
-- 🎨 **Beautiful UI**: Modern, responsive design
-
-### CLI Features
-- 🎨 **Rich Display**: Formatted table with color-coded consumption values
-- 🔍 **Debug Output**: Comprehensive logging for troubleshooting
-- 🗓️ **Flexible Date Ranges**: Multiple preset date range options
+- Automated login and daily data fetch from the Ecotricity portal
+- SQLite storage with historical backfill for late-arriving data
+- Web dashboard: consumption trends, day-of-week breakdown, high/low distribution, cost analysis (incl. 15% GST), JSON/CSV export
+- Background scheduler (daily fetch + weekly backfill)
+- CLI with formatted output, same data pipeline
+- Docker and docker-compose support with health check
 
 ## Requirements
 
-- Python 3.7+
-- Dependencies (see `requirements.txt`):
-  - `requests` - HTTP requests library
-  - `python-dotenv` - Environment variable management
-  - `rich` - Rich terminal output formatting
-  - `flask` - Web framework for dashboard
-  - `apscheduler` - Background task scheduling
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd ecotricity-fetchusage
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Configuration
-
-### Credentials Setup (Required)
-
-You have three options to provide your Ecotricity credentials:
-
-#### Option 1: Environment Variables (Recommended)
-```bash
-# Windows (PowerShell)
-$env:ECOTRICITY_LOGIN="your_account_number"
-$env:ECOTRICITY_PASSWORD="your_password"
-python run.py web
-
-# Windows (CMD)
-set ECOTRICITY_LOGIN=your_account_number
-set ECOTRICITY_PASSWORD=your_password
-python run.py web
-
-# Linux/macOS
-export ECOTRICITY_LOGIN="your_account_number"
-export ECOTRICITY_PASSWORD="your_password"
-python run.py web
-```
-
-#### Option 2: .env File (Recommended for Development)
-1. Create a `.env` file in the project directory:
-   ```
-   ECOTRICITY_LOGIN=your_account_number
-   ECOTRICITY_PASSWORD=your_password
-   ```
-
-2. Run any command:
-   ```bash
-   python run.py web
-   python run.py scheduler
-   python run.py all
-   ```
-
-#### Option 3: Interactive Prompts
-Simply run the script without setting credentials:
-```bash
-python ecotricity.py
-```
-You'll be prompted to enter your login and password.
-
-### Optional: Configuration File
-
-Create or edit `config.json` to customize settings:
-
-```json
-{
-  "scheduler": {
-    "enabled": true,
-    "hour": 23,
-    "minute": 0
-  },
-  "web_ui": {
-    "host": "127.0.0.1",
-    "port": 5000,
-    "debug": false
-  }
-}
-```
-
-### Cost Configuration
-
-To adjust the cost calculations, edit [database.py](database.py) and modify these constants:
-
-```python
-COST_PER_KWH = 0.2125  # $0.2125 per kWh (before GST)
-GST_RATE = 0.15       # 15% GST
-```
-
-**Default Settings:**
-- Cost: $0.2125 per kWh + 15% GST = **$0.244375 per kWh**
-- All dashboard costs include GST automatically
-
-## Usage
-
-### Quick Start: Run Everything
-
-The easiest way to get started is to run the complete system with both scheduler and web UI:
+- Python 3.10+
+- Dependencies: `requests`, `python-dotenv`, `rich`, `flask`, `apscheduler`, `tzdata`
 
 ```bash
+pip install -r requirements.txt
+```
+
+## Quick Start
+
+```bash
+git clone <repository-url>
+cd ecotricity-fetchusage
+pip install -r requirements.txt
+
+# Credentials
+echo "ECOTRICITY_LOGIN=your_account_number" >> .env
+echo "ECOTRICITY_PASSWORD=your_password" >> .env
+
+# Backfill history, fetch now, run scheduler and dashboard
 python run.py all
 ```
 
-This will:
-1. **Backfill** missing historical data (90 days by default)
-2. **Fetch** consumption data immediately
-3. Start the **background scheduler** to fetch data daily at 23:00
-4. Start the **weekly backfill** job (Mondays at 2 AM) to catch any newly available data
-5. Launch the **web UI dashboard** at `http://127.0.0.1:5000`
+Dashboard: <http://127.0.0.1:5000>
 
-### Individual Commands
+### Credentials
 
-#### Fetch Data Once
-Fetch consumption data and store in the database:
+Credentials can come from (in order of convenience):
 
-```bash
-# Default: last 7 days
-python run.py fetch
+1. `.env` file in the project root
+2. Environment variables `ECOTRICITY_LOGIN` / `ECOTRICITY_PASSWORD`
+3. Interactive prompt when running `python ecotricity.py`
 
-# Specific date range
-python run.py fetch --dates "last 30 days"
-python run.py fetch --dates "last month"
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `python run.py all` | Backfill, fetch, start scheduler and web UI |
+| `python run.py fetch [--dates "last 30 days"]` | One-off fetch (default: last 7 days) |
+| `python run.py scheduler [--hour 22 --minute 30]` | Scheduler only (default: 23:00 daily) |
+| `python run.py backfill [--start YYYY-MM-DD --end YYYY-MM-DD] [--max 10]` | Fill gaps (default: last 90 days) |
+| `python run.py web [--host 0.0.0.0] [--port 8000] [--debug]` | Dashboard only |
+| `python ecotricity.py [--dates "last month"]` | Original CLI |
+
+Supported date presets: `last 2 days`, `last 7 days` (default), `last 30 days`, `last month`, `last 3 months`.
+
+## Dashboard
+
+Features: summary statistics, cost analysis (15% GST), time-series/trend chart, day-of-week chart, high/low distribution, insights, JSON/CSV export.
+
+API endpoints:
+
+| Endpoint | Description |
+|---|---|
+| `GET /` | Dashboard |
+| `GET /health` | Health check |
+| `GET /api/data` | Consumption data (last 30 days) |
+| `GET /api/statistics` | Statistical summary |
+| `GET /api/summary` | 30-day and all-time summary |
+| `GET /api/daily-breakdown` | Average by day of week |
+| `GET /api/trends` | Trend calculations |
+| `GET /api/costs/statistics` | Cost statistics and trends |
+| `GET /api/costs/daily` | Daily costs (last 30 days) |
+| `GET /api/costs/monthly` | Monthly cost breakdown |
+| `GET /api/sync/info` | Last/next sync information |
+| `POST /api/sync/trigger` | Trigger a fetch |
+| `GET /api/export/json` | Export all data as JSON |
+| `GET /api/export/csv` | Export all data as CSV |
+
+## Configuration
+
+Optional `config.json` (auto-created) overrides defaults:
+
+```json
+{
+  "scheduler": { "enabled": true, "hour": 23, "minute": 0 },
+  "web_ui": { "host": "127.0.0.1", "port": 5000, "debug": false }
+}
 ```
 
-Available date presets:
-- `last 2 days`
-- `last 7 days` (default)
-- `last 30 days`
-- `last month`
-- `last 3 months`
+Cost constants live in `database.py`:
 
-#### Run Scheduler Only
-Automatically fetch data at scheduled times:
-
-```bash
-# Fetch daily at 23:00 (default)
-python run.py scheduler
-
-# Fetch daily at 22:30
-python run.py scheduler --hour 22 --minute 30
+```python
+COST_PER_KWH = 0.2125  # before GST
+GST_RATE = 0.15
 ```
 
-#### Backfill Missing Data
-Fill in gaps in your consumption history (especially useful if recent data wasn't available):
+### Environment Variables
 
-```bash
-# Backfill missing data from last 90 days
-python run.py backfill
-
-# Backfill specific date range
-python run.py backfill --start 2026-01-01 --end 2026-03-31
-
-# Backfill more date ranges per run
-python run.py backfill --max 10
-
-# All together
-python run.py backfill --start 2026-01-01 --max 15
-```
-
-**How Backfill Works:**
-- Automatically detects missing data in your history
-- Retries fetches for dates that didn't have data yet
-- Runs on startup when scheduler starts
-- Runs weekly (Mondays at 2 AM) to catch newly available data
-- Respects API rate limits by processing a limited number of ranges per run
-
-#### Run Web UI Only
-Start the interactive dashboard:
-
-```bash
-# Default: http://127.0.0.1:5000
-python run.py web
-
-# Custom host/port
-python run.py web --host 0.0.0.0 --port 8000
-
-# With debug mode
-python run.py web --debug
-```
-
-**Supported Date Presets in Dashboard:**
-The web UI displays data using these supported date ranges:
-- `last 2 days`
-- `last 7 days` (default)
-- `last 30 days`
-- `last month`
-- `last 3 months`
-
-### Original CLI Usage
-
-The original command-line interface is still available:
-
-```bash
-python ecotricity.py
-
-# Specific date range
-python ecotricity.py --dates "last 7 days"
-python ecotricity.py --dates "last month"
-```
-
-## Web Dashboard
-
-The web dashboard provides interactive visualizations of your consumption data.
-
-### URL
-```
-http://127.0.0.1:5000
-```
-
-### Features
-
-1. **Summary Statistics**
-   - Total consumption (last 30 days)
-   - Daily average
-   - Min/max consumption
-   - 30-day trend (% change)
-
-2. **Cost Analysis** (with 15% GST included)
-   - Total cost for last 30 days
-   - Daily average cost
-   - Cost range (min/max daily cost)
-   - Cost trends
-   - Monthly cost breakdown table
-   - All-time average costs
-
-3. **Charts**
-   - Time series line chart with trend line (all available data with horizontal scrolling)
-   - Day-of-week bar chart
-   - High/Low distribution (doughnut chart)
-
-4. **Insights**
-   - Peak consumption days
-   - Day-of-week patterns
-   - Usage stability analysis
-   - Trend indicators
-   - Monthly spending analysis
-
-5. **Data Export**
-   - Download as JSON
-   - Download as CSV
-
-### API Endpoints
-
-- `GET /api/data` - Consumption data for last 30 days
-- `GET /api/statistics` - Statistical summaries
-- `GET /api/summary` - Overall summary (30 days + all time)
-- `GET /api/daily-breakdown` - Average by day of week
-- `GET /api/trends` - Trend calculations
-- `GET /api/costs/statistics` - Cost statistics and trends (with GST)
-- `GET /api/costs/daily` - Daily costs for last 30 days
-- `GET /api/costs/monthly` - Monthly cost breakdown
-- `GET /api/export/json` - Export all data as JSON
-- `GET /api/export/csv` - Export all data as CSV
+| Variable | Default | Description |
+|---|---|---|
+| `ECOTRICITY_LOGIN` | — | Account number (required) |
+| `ECOTRICITY_PASSWORD` | — | Password (required) |
+| `SCHEDULER_HOUR` | `23` | Daily fetch hour (0–23) |
+| `SCHEDULER_MINUTE` | `0` | Daily fetch minute (0–59) |
+| `FLASK_HOST` | `127.0.0.1` | Web host (`0.0.0.0` in Docker) |
+| `FLASK_PORT` | `5000` | Web port |
+| `ECOTRICITY_TIMEZONE` | `Pacific/Auckland` | Timezone used to build API date ranges |
+| `ECOTRICITY_TIMEOUT` | `30` | Per-request timeout (seconds) |
+| `ECOTRICITY_MAX_ATTEMPTS` | `4` | Attempts per request (1 = no retries) |
+| `ECOTRICITY_BACKOFF_BASE` | `2.0` | Exponential backoff base (seconds) |
+| `ECOTRICITY_BACKOFF_CAP` | `30` | Maximum backoff delay (seconds) |
+| `ECOTRICITY_BATCH_DELAY` | `1.5` | Pause between backfill requests (seconds) |
 
 ## Database
 
-Consumption data is stored in SQLite database (`consumption.db`):
+SQLite at `data/consumption.db`:
 
-```
-consumption.db
-├── consumption table:
-│   ├── id (primary key)
-│   ├── date (unique)
-│   ├── weekday
-│   ├── value (kWh)
-│   └── fetched_at (timestamp)
-│
-└── fetch_attempts table (for backfill tracking):
-    ├── id (primary key)
-    ├── date_requested
-    ├── attempt_date
-    ├── success (boolean)
-    └── error_message
-```
+- `consumption`: `id`, `date` (unique), `weekday`, `value` (kWh), `fetched_at`
+- `fetch_attempts`: `id`, `date_requested`, `attempt_date`, `success`, `error_message`
 
-You can query this database directly or use the provided Python API.
+```python
+from database import get_last_fetch_date, get_data_range
+
+print(get_last_fetch_date())
+print(get_data_range())
+```
 
 ## Data Collection Strategy
 
-The system handles **incomplete historical data** through a multi-pronged approach:
+- **Daily fetch (23:00)** retrieves the last 7 days to absorb API delays.
+- **Backfill on scheduler start** fills gaps from the last 90 days.
+- **Weekly backfill (Mondays 02:00)** catches data published late or corrected by the portal.
+- **Manual backfill**: `python run.py backfill --start 2026-01-01 --end 2026-06-30`.
 
-### 1. **Daily Fetch**
-- Runs daily (default 23:00) to capture current consumption
-- Fetches last 7 days to handle any API delays
-- Records successful fetches in the database
+The client retries `429`/`5xx` with exponential backoff and jitter (honouring `Retry-After`), re-authenticates once per fetch if the session goes stale, and treats `503 "No metering data available"` as a business response rather than an outage.
 
-### 2. **Automatic Backfill on Startup**
-- When scheduler starts, automatically backfills missing data from last 90 days
-- Smart detection of date gaps in your history
-- Prevents re-fetching already available data
+## Docker
 
-### 3. **Weekly Backfill Job**
-- Runs every Monday at 2 AM
-- Catches any newly available historical data
-- Handles cases where data becomes available after initial fetch failed
-
-### 4. **Manual Backfill Command**
 ```bash
-# Backfill any recent gaps
-python run.py backfill
+cat > .env << EOF
+ECOTRICITY_LOGIN=your_account_number
+ECOTRICITY_PASSWORD=your_password
+EOF
 
-# Backfill specific date range
-python run.py backfill --start 2026-01-01 --end 2026-06-30
+docker compose up -d          # build + start
+docker compose logs -f        # follow logs
+curl http://localhost:5000/health
+docker compose down           # stop (data kept)
 ```
 
-### Why This Matters
-Some utility APIs don't make data available immediately:
-- Last 2-3 days may not have final readings
-- Certain date ranges may require finalization
-- Manual corrections from utility may appear later
+Manual:
 
-The backfill system ensures you gradually capture all available data over time without manual intervention.
+```bash
+docker build -t ecotricity .
+docker run -d --name ecotricity --restart unless-stopped \
+  -p 5000:5000 \
+  -e ECOTRICITY_LOGIN="your_account" \
+  -e ECOTRICITY_PASSWORD="your_password" \
+  -v ecotricity_data:/app/data \
+  ecotricity
+```
+
+The image runs as non-root `appuser` (UID 1000), persists `/app/data` in a named volume, and includes a `/health` check. `portainer-stack.yml` is provided for Portainer deployments.
+
+Images are built and published to GHCR by `.github/workflows/docker-build.yml` on pushes to `main`/`master` and on `v*` tags:
+
+```bash
+docker pull ghcr.io/YOUR_USERNAME/ecotricity-fetchusage:latest
+```
+
+Run commands inside a container:
+
+```bash
+docker compose exec ecotricity python run.py fetch --dates "last month"
+docker compose exec ecotricity python run.py backfill
+```
+
+Backup the database:
+
+```bash
+docker cp ecotricity-fetchusage:/app/data/consumption.db ./consumption.db.backup
+```
+
+## Troubleshooting
+
+- **Credentials not found**: set `ECOTRICITY_LOGIN`/`ECOTRICITY_PASSWORD` or create `.env`.
+- **Login failed**: verify account number/password and that the account is active.
+- **HTTP 503 "No metering data available"**: no data for that range — try another range. This is not retried by design.
+- **Repeated 429/5xx**: portal/WAF may block the container's source IP; check logs, try another host/VPN.
+- **Wrong date ranges in Docker**: containers run in UTC; dates are rendered in `Pacific/Auckland` regardless, override with `ECOTRICITY_TIMEZONE`.
+- **Dashboard won't start**: port 5000 in use (`python run.py web --port 8000`) or dependencies missing.
+- **No data in dashboard**: run `python run.py fetch`, then check logs for fetch errors.
+- **Permission errors in Docker**: files under `/app/data` must be writable by UID 1000.
+
+Scheduler log markers: `Starting scheduled fetch...`, `✓ Fetched and stored X records`, `✗ Scheduled fetch failed`.
 
 ## Project Structure
 
@@ -351,112 +209,26 @@ ecotricity-fetchusage/
 ├── ecotricity.py          # Original CLI script
 ├── app.py                 # Flask web application
 ├── scheduler.py           # Background task scheduler
-├── database.py            # Database operations
+├── database.py            # Database and cost calculations
 ├── config.py              # Configuration management
 ├── run.py                 # Main entry point with subcommands
-├── consumption.db         # SQLite database (created on first run)
-├── config.json            # Configuration file (auto-generated)
-├── requirements.txt       # Python dependencies
-├── templates/
-│   └── index.html        # Dashboard HTML/CSS/JS
-└── README.md             # This file
-```
-
-## Troubleshooting
-
-### "Credentials not found" Error
-- Ensure `ECOTRICITY_LOGIN` and `ECOTRICITY_PASSWORD` are set
-- Create a `.env` file with your credentials
-- Or set environment variables before running
-
-### "No metering data available" (HTTP 503)
-- The date range doesn't contain any data in your account
-- Check the Ecotricity portal for available date ranges
-- Try a different date range
-- This is a *business* response, so the client does **not** retry it
-
-### Transient 429/5xx from the portal (e.g. bare "503")
-The portal's edge returns occasional `429`/`500`/`502`/`503`/`504` responses,
-more often from a datacenter/container IP than a home connection. The client now:
-- retries those statuses with exponential backoff and jitter, honouring `Retry-After`
-- re-logs in and retries once per scheduled fetch if a session goes stale
-- treats the portal's `503 "No metering data available"` as a business answer instead of an outage
-- spaces out backfill requests to avoid tripping rate limiting
-
-If 503s persist, the portal (or its WAF) may be blocking the container's source IP.
-Check the container logs for the retry lines, and if needed run from another host/VPN.
-
-### Wrong / empty date ranges in Docker
-Containers usually run in UTC. The client renders every date in the
-`Pacific/Auckland` offset for that specific date (NZST/NZDT aware) rather than
-trusting the host clock, so date ranges are correct regardless of container TZ.
-Override with `ECOTRICITY_TIMEZONE` if needed.
-
-### Reliability tuning (environment variables)
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ECOTRICITY_TIMEZONE` | `Pacific/Auckland` | Timezone used to build API date ranges |
-| `ECOTRICITY_TIMEOUT` | `30` | Per-request timeout (seconds) |
-| `ECOTRICITY_MAX_ATTEMPTS` | `4` | Total attempts per request (1 = no retries) |
-| `ECOTRICITY_BACKOFF_BASE` | `2.0` | Exponential backoff base (seconds) |
-| `ECOTRICITY_BACKOFF_CAP` | `30` | Maximum backoff delay (seconds) |
-| `ECOTRICITY_BATCH_DELAY` | `1.5` | Pause between backfill requests (seconds) |
-
-### Login Failed
-- Verify your account number and password are correct
-- Check that your Ecotricity account is active
-- Your account may have changed (check portal)
-
-### Web UI won't start
-- Check if port 5000 is already in use: `python run.py web --port 8000`
-- Ensure Flask is installed: `pip install flask`
-- Check error output for more details
-
-### Scheduler stops unexpectedly
-- Check the error output in the terminal
-- Ensure credentials remain valid
-- The session may have expired; restart the scheduler
-- Check your internet connection
-
-## Monitoring
-
-### Scheduler Status
-The scheduler logs all fetch operations to the console with timestamps. Look for:
-- `Starting scheduled fetch...` - Fetch started
-- `✓ Fetched and stored X records` - Successful fetch
-- `✗ Scheduled fetch failed` - Error occurred
-
-### Database Status
-Check the database for latest data:
-
-```python
-from database import get_last_fetch_date, get_data_range
-
-# Get most recent data date
-last_date = get_last_fetch_date()
-print(f"Last data: {last_date}")
-
-# Get full date range
-start, end = get_data_range()
-print(f"Data range: {start} to {end}")
+├── data/consumption.db    # SQLite database (created on first run)
+├── templates/index.html   # Dashboard HTML/CSS/JS
+├── docs/images/           # README screenshots
+├── Dockerfile
+├── docker-compose.yml
+├── portainer-stack.yml
+└── requirements.txt
 ```
 
 ## API Details
 
-- **Portal**: https://portal.ecotricity.co.nz/powercommerce/eco/fo/portal
-- **Data Endpoint**: `/analysis/valueRequest`
-- **Supported dateTypes**: 
-  - `DAY` - Single day only, returns HALF_HOUR granularity (30-minute intervals)
-  - `WEEK` - 1-7 day ranges, returns DAY granularity
-  - `MONTH` - Any date range, returns DAY granularity
-- **Default Granularity**: DAY (daily consumption) for ranges over 1 day
+- **Portal**: <https://portal.ecotricity.co.nz/powercommerce/eco/fo/portal>
+- **Data endpoint**: `/analysis/valueRequest`
+- **dateType**: `DAY` (single day, 30-minute granularity), `WEEK` (1–7 days), `MONTH` (any range) — `WEEK`/`MONTH` return daily values
 - **Metric**: `POWER_ACTIVE_PURCHASE_CONSUMPTION`
-- **Timezone**: Pacific/Auckland
+- **Timezone**: `Pacific/Auckland`
 
 ## License
 
 [Add license information here]
-
-## Contributing
-
-[Add contribution guidelines here]

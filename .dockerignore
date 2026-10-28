@@ -27,7 +27,7 @@ htmlcov/
 *.swo
 *~
 README.md
-example.md
+docs/
 .gitattributes
 Dockerfile
 docker-compose.yml
