@@ -23,6 +23,12 @@ Fetches your power consumption from the Ecotricity portal, stores it in SQLite, 
 pip install -r requirements.txt
 ```
 
+Run the tests (stdlib `unittest`, no extra dependency):
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## Quick Start
 
 ```bash
@@ -85,15 +91,6 @@ API endpoints:
 | `GET /api/export/csv` | Export all data as CSV |
 
 ## Configuration
-
-Optional `config.json` (auto-created) overrides defaults:
-
-```json
-{
-  "scheduler": { "enabled": true, "hour": 23, "minute": 0 },
-  "web_ui": { "host": "127.0.0.1", "port": 5000, "debug": false }
-}
-```
 
 Cost constants live in `database.py`:
 
@@ -161,7 +158,7 @@ Manual:
 ```bash
 docker build -t ecotricity .
 docker run -d --name ecotricity --restart unless-stopped \
-  -p 5000:5000 \
+  -p 127.0.0.1:5000:5000 \
   -e ECOTRICITY_LOGIN="your_account" \
   -e ECOTRICITY_PASSWORD="your_password" \
   -v ecotricity_data:/app/data \
@@ -169,6 +166,8 @@ docker run -d --name ecotricity --restart unless-stopped \
 ```
 
 The image runs as non-root `appuser` (UID 1000), persists `/app/data` in a named volume, and includes a `/health` check. `portainer-stack.yml` is provided for Portainer deployments.
+
+By default compose publishes the dashboard on `127.0.0.1` only, because there is no login on the UI or the sync endpoint. To reach it from another machine, change the port mapping to `0.0.0.0:5000:5000` and put it behind your own auth or firewall.
 
 Images are built and published to GHCR by `.github/workflows/docker-build.yml` on pushes to `main`/`master` and on `v*` tags:
 
@@ -210,10 +209,10 @@ ecotricity-fetchusage/
 ├── app.py                 # Flask web application
 ├── scheduler.py           # Background task scheduler
 ├── database.py            # Database and cost calculations
-├── config.py              # Configuration management
 ├── run.py                 # Main entry point with subcommands
 ├── data/consumption.db    # SQLite database (created on first run)
 ├── templates/index.html   # Dashboard HTML/CSS/JS
+├── tests/test_core.py     # Unit tests (stdlib unittest)
 ├── docs/images/           # README screenshots
 ├── Dockerfile
 ├── docker-compose.yml

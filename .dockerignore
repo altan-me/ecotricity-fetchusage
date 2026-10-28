@@ -29,6 +29,7 @@ htmlcov/
 README.md
 LICENSE
 docs/
+tests/
 .gitattributes
 Dockerfile
 docker-compose.yml

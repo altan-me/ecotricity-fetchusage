@@ -83,11 +83,10 @@ def insert_consumption_data(rows: List[Dict]) -> None:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    for row in rows:
-        cursor.execute("""
-            INSERT OR REPLACE INTO consumption (date, weekday, value, fetched_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, (row["date"], row["weekday"], row["value"]))
+    cursor.executemany("""
+        INSERT OR REPLACE INTO consumption (date, weekday, value, fetched_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    """, [(row["date"], row["weekday"], row["value"]) for row in rows])
     
     conn.commit()
     conn.close()
@@ -116,8 +115,11 @@ def get_all_consumption() -> List[Dict]:
     return rows
 
 
-def get_consumption_by_range(days: int = 30) -> List[Dict]:
-    """Get consumption data for the last N days."""
+def get_consumption_by_range(days: Optional[int] = 30) -> List[Dict]:
+    """Get consumption data for the last N days (None means all data)."""
+    if days is None:
+        return get_all_consumption()
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -142,8 +144,8 @@ def get_consumption_by_range(days: int = 30) -> List[Dict]:
     return rows
 
 
-def get_statistics(days: int = 30) -> Dict:
-    """Calculate statistics for the last N days."""
+def get_statistics(days: Optional[int] = 30) -> Dict:
+    """Calculate statistics for the last N days (None means all time)."""
     rows = get_consumption_by_range(days)
     
     if not rows:
@@ -235,18 +237,26 @@ def get_data_range() -> Tuple[Optional[str], Optional[str]]:
     return (result[0], result[1]) if result[0] else (None, None)
 
 
-def record_fetch_attempt(date_requested: str, success: bool, error_message: str = None) -> None:
-    """Record a fetch attempt for backfill tracking."""
+def record_fetch_attempts(dates: List[str], success: bool, error_message: str = None) -> None:
+    """Record one attempt per date, in a single transaction."""
+    if not dates:
+        return
+    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    cursor.execute("""
+    cursor.executemany("""
         INSERT INTO fetch_attempts (date_requested, success, error_message)
         VALUES (?, ?, ?)
-    """, (date_requested, success, error_message))
+    """, [(date, success, error_message) for date in dates])
     
     conn.commit()
     conn.close()
+
+
+def record_fetch_attempt(date_requested: str, success: bool, error_message: str = None) -> None:
+    """Record a fetch attempt for one date."""
+    record_fetch_attempts([date_requested], success, error_message)
 
 
 def get_missing_date_ranges(start_date: str = None, end_date: str = None) -> List[Tuple[str, str]]:
@@ -320,24 +330,6 @@ def get_missing_date_ranges(start_date: str = None, end_date: str = None) -> Lis
     return [r for r in ranges if r[1] not in recent_failures]
 
 
-def get_last_backfill_date() -> Optional[str]:
-    """Get the most recent date successfully backfilled."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT MAX(date_requested) FROM fetch_attempts 
-        WHERE success = 1
-        ORDER BY attempt_date DESC
-        LIMIT 1
-    """)
-    
-    result = cursor.fetchone()
-    conn.close()
-    
-    return result[0] if result[0] else None
-
-
 def get_failed_fetch_dates(days_back: int = 30) -> List[str]:
     """Get dates that failed to fetch in the last N days."""
     from datetime import datetime, timedelta
@@ -386,51 +378,6 @@ def get_daily_costs(days: int = 30) -> List[Dict]:
     return daily_costs
 
 
-def get_monthly_costs(year: int = None, month: int = None) -> List[Dict]:
-    """Get consumption and costs grouped by month."""
-    from datetime import datetime
-    
-    if year is None or month is None:
-        now = datetime.now()
-        year = now.year
-        month = now.month
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT 
-            strftime('%Y-%m', date) as month,
-            SUM(value) as total_kwh,
-            COUNT(*) as days,
-            MIN(value) as min_kwh,
-            MAX(value) as max_kwh,
-            AVG(value) as avg_kwh
-        FROM consumption
-        WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
-        GROUP BY month
-    """, (f"{year:04d}", f"{month:02d}"))
-    
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result:
-        total_kwh = result[1]
-        return {
-            "year": year,
-            "month": month,
-            "total_kwh": round(total_kwh, 2),
-            "total_cost": round(calculate_cost(total_kwh), 2),
-            "days": result[2],
-            "min_kwh": round(result[3], 2),
-            "max_kwh": round(result[4], 2),
-            "avg_kwh": round(result[5], 2),
-            "avg_daily_cost": round(calculate_cost(result[5]), 2)
-        }
-    else:
-        return None
-
-
 def get_all_monthly_costs() -> List[Dict]:
     """Get consumption and costs for all available months."""
     conn = sqlite3.connect(DB_PATH)
@@ -472,8 +419,8 @@ def get_all_monthly_costs() -> List[Dict]:
     return months
 
 
-def get_cost_statistics(days: int = 30) -> Dict:
-    """Get cost statistics for the period."""
+def get_cost_statistics(days: Optional[int] = 30) -> Dict:
+    """Get cost statistics for the period (None means all time)."""
     rows = get_consumption_by_range(days)
     
     if not rows:

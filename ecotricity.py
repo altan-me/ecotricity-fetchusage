@@ -576,6 +576,16 @@ def init_data(session: requests.Session) -> None:
 # ── Fetch ─────────────────────────────────────────────────────────────────────
 
 
+def fetch_consumption(session: requests.Session, date_range: str) -> list[dict]:
+    """Run one full fetch cycle (page state, init, fetch, parse)."""
+    init_consumption_page(session)
+    init_data(session)
+    date_from, date_to, date_type = calculate_date_range(date_range)
+    payload = create_payload(date_from, date_to, date_type)
+    data = fetch_data(session, payload)
+    return parse_values(data)
+
+
 def fetch_data(session: requests.Session, payload: dict) -> dict:
     """Fetch consumption data from Ecotricity API using the official payload format.
     
@@ -648,6 +658,9 @@ def fetch_data(session: requests.Session, payload: dict) -> dict:
 # ── Parse ─────────────────────────────────────────────────────────────────────
 
 
+WEEKDAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
 def parse_values(data: dict) -> list[dict]:
     rows = []
     for indicator in data.get("indicatorValueResponses", []):
@@ -660,7 +673,8 @@ def parse_values(data: dict) -> list[dict]:
                     from datetime import datetime
                     start_dt = datetime.fromisoformat(start_str)
                     date_label = start_dt.strftime("%Y-%m-%d")
-                    weekday = start_dt.strftime("%a")
+                    # Fixed names: strftime("%a") depends on the process locale.
+                    weekday = WEEKDAY_NAMES[start_dt.weekday()]
                 except ValueError:
                     date_label = start_str
                     weekday = "?"
@@ -755,10 +769,6 @@ Examples:
     # Load environment variables from .env file
     load_dotenv()
     
-    # Calculate date range and determine appropriate dateType
-    date_from, date_to, date_type = calculate_date_range(args.dates)
-    payload = create_payload(date_from, date_to, date_type)
-    
     login, password = get_credentials()
 
     console = Console()
@@ -766,11 +776,9 @@ Examples:
 
     try:
         session = create_session(login, password)
-        init_consumption_page(session)
-        init_data(session)
 
         print("\n📊 Fetching data...")
-        data = fetch_data(session, payload)
+        rows = fetch_consumption(session, args.dates)
         print("  ✓ Data fetched successfully.")
     except EcotricityNoDataError as exc:
         console.print(f"\n  [yellow]⚠ {exc}[/yellow]")
@@ -779,7 +787,6 @@ Examples:
         console.print(f"\n  [red]❌ {exc}[/red]")
         sys.exit(1)
 
-    rows = parse_values(data)
     display_table(rows)
 
 

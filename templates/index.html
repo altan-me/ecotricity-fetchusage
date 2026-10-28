@@ -768,7 +768,9 @@
             // Calculate canvas width based on number of data points
             // Ensure at least 60px per data point for readability
             const dataPointCount = data.dates.length;
-            const minCanvasWidth = Math.max(100, dataPointCount * 60);
+            // Cap the canvas so years of history cannot allocate a huge bitmap;
+            // the zoom/pan controls still reach older data.
+            const minCanvasWidth = Math.min(10000, Math.max(100, dataPointCount * 60));
             
             // Time series chart
             const timeSeriesCanvas = document.getElementById('timeSeriesChart');

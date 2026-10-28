@@ -16,20 +16,19 @@ from dotenv import load_dotenv
 
 # Import from main script
 from ecotricity import (
-    get_credentials,
     create_session,
+    fetch_consumption,
     init_consumption_page,
     init_data,
     fetch_data,
     parse_values,
-    calculate_date_range,
     create_payload,
     format_portal_datetime,
     EcotricityError,
     EcotricityNoDataError,
     BATCH_DELAY,
 )
-from database import init_db, insert_consumption_data, record_fetch_attempt, get_missing_date_ranges, get_last_backfill_date, record_sync_start, record_sync_complete, update_sync_info
+from database import init_db, insert_consumption_data, record_fetch_attempt, record_fetch_attempts, get_missing_date_ranges, record_sync_start, record_sync_complete, update_sync_info
 
 # Configure logging
 logging.basicConfig(
@@ -76,16 +75,7 @@ class ConsumptionScheduler:
 
     def _fetch_rows(self, date_range: str) -> list:
         """Perform one full fetch cycle and return the parsed rows."""
-        session = self._get_session()
-
-        init_consumption_page(session)
-        init_data(session)
-
-        date_from, date_to, date_type = calculate_date_range(date_range)
-        payload = create_payload(date_from, date_to, date_type)
-
-        data = fetch_data(session, payload)
-        return parse_values(data)
+        return fetch_consumption(self._get_session(), date_range)
 
     def is_fetching(self) -> bool:
         """True while a fetch or backfill is running."""
@@ -139,8 +129,7 @@ class ConsumptionScheduler:
                 insert_consumption_data(rows)
                 self.console.print(f"[green]✓ Fetched and stored {len(rows)} records[/green]")
                 # Record successful fetch
-                for row in rows:
-                    record_fetch_attempt(row["date"], success=True)
+                record_fetch_attempts([row["date"] for row in rows], success=True)
                 record_sync_complete()
                 return True
 
@@ -221,8 +210,7 @@ class ConsumptionScheduler:
                     if rows:
                         insert_consumption_data(rows)
                         self.console.print(f"[green]✓ Backfilled {len(rows)} records for {range_start} to {range_end}[/green]")
-                        for row in rows:
-                            record_fetch_attempt(row["date"], success=True)
+                        record_fetch_attempts([row["date"] for row in rows], success=True)
                     else:
                         self.console.print(f"[yellow]⚠ No data for {range_start} to {range_end} (may not be available yet)[/yellow]")
                         # Record failed attempt so we don't retry immediately
@@ -253,6 +241,7 @@ class ConsumptionScheduler:
         self.scheduler.add_job(
             self.fetch_and_store,
             CronTrigger(hour=self.hour, minute=self.minute),
+            args=["last 7 days"],
             id='daily_fetch',
             name='Daily consumption fetch',
             replace_existing=True

@@ -3,8 +3,7 @@ Flask web UI for visualizing power consumption data.
 """
 
 from flask import Flask, render_template, jsonify, request
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
 import threading
 from database import (
     init_db,
@@ -15,7 +14,6 @@ from database import (
     get_last_fetch_date,
     get_data_range,
     get_daily_costs,
-    get_monthly_costs,
     get_all_monthly_costs,
     get_cost_statistics,
     get_cost_trend,
@@ -100,7 +98,7 @@ def api_statistics():
 def api_summary():
     """Get summary statistics for display."""
     stats_30 = get_statistics(days=30)
-    stats_all = get_statistics(days=365)  # Get all time if available
+    stats_all = get_statistics(days=None)  # all time
     start_date, end_date = get_data_range()
     
     return jsonify({
@@ -212,7 +210,7 @@ def api_costs_monthly():
 def api_costs_statistics():
     """Get cost statistics."""
     stats_30 = get_cost_statistics(days=30)
-    stats_all = get_cost_statistics(days=365)
+    stats_all = get_cost_statistics(days=None)
     trend = get_cost_trend(days=30)
     
     return jsonify({

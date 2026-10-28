@@ -4,10 +4,8 @@ Helper script to easily run the scheduler and web UI.
 """
 
 import argparse
-import subprocess
 import sys
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 from rich.console import Console
 
@@ -71,8 +69,7 @@ def run_web_ui(host: str = "127.0.0.1", port: int = 5000, debug: bool = False) -
 
 
 def run_combined(hour: int = 23, minute: int = 0, host: str = "127.0.0.1", port: int = 5000) -> None:
-    """Run both scheduler and web UI in separate processes."""
-    import subprocess
+    """Run both scheduler and web UI in separate threads."""
     from threading import Thread
     from time import sleep
     
@@ -163,12 +160,7 @@ def fetch_once(date_preset: str = "last 7 days") -> None:
         from ecotricity import (
             get_credentials,
             create_session,
-            init_consumption_page,
-            init_data,
-            fetch_data,
-            parse_values,
-            calculate_date_range,
-            create_payload,
+            fetch_consumption,
             EcotricityNoDataError,
             EcotricityError,
         )
@@ -180,15 +172,7 @@ def fetch_once(date_preset: str = "last 7 days") -> None:
 
         try:
             session = create_session(login, password)
-
-            init_consumption_page(session)
-            init_data(session)
-
-            date_from, date_to, date_type = calculate_date_range(date_preset)
-            payload = create_payload(date_from, date_to, date_type)
-
-            data = fetch_data(session, payload)
-            rows = parse_values(data)
+            rows = fetch_consumption(session, date_preset)
         except EcotricityNoDataError as e:
             console.print(f"[yellow]⚠ {e}[/yellow]")
             return
