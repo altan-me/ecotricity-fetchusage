@@ -10,6 +10,7 @@ from rich.console import Console
 import random
 import sys
 import os
+import threading
 import time
 from dotenv import load_dotenv
 
@@ -58,6 +59,9 @@ class ConsumptionScheduler:
         self.minute = minute
         self.scheduler = BackgroundScheduler()
         self._session = None
+        # One fetch at a time: two logins on one requests.Session is unsafe and
+        # two writers on the SQLite file can collide.
+        self._fetch_lock = threading.Lock()
         
         # Initialize database
         init_db()
@@ -83,13 +87,29 @@ class ConsumptionScheduler:
         data = fetch_data(session, payload)
         return parse_values(data)
 
-    def fetch_and_store(self, date_range: str = "last 30 days") -> None:
+    def is_fetching(self) -> bool:
+        """True while a fetch or backfill is running."""
+        return self._fetch_lock.locked()
+
+    def fetch_and_store(self, date_range: str = "last 30 days") -> bool:
         """Fetch consumption data and store it in the database.
-        
+
+        Returns True only when rows were stored, so callers can tell a real
+        sync from a failed one.
+
         Args:
             date_range: Date range to fetch (default: "last 30 days")
                        Examples: "last 7 days", "last 14 days", "last 30 days", "last 3 months"
         """
+        if not self._fetch_lock.acquire(blocking=False):
+            self.console.print("[yellow]⚠ Another fetch is running; skipping[/yellow]")
+            return False
+        try:
+            return self._fetch_and_store(date_range)
+        finally:
+            self._fetch_lock.release()
+
+    def _fetch_and_store(self, date_range: str) -> bool:
         try:
             record_sync_start()
             self.console.print(f"\n[cyan][{datetime.now().isoformat()}] Starting scheduled fetch ({date_range})...[/cyan]")
@@ -121,11 +141,14 @@ class ConsumptionScheduler:
                 # Record successful fetch
                 for row in rows:
                     record_fetch_attempt(row["date"], success=True)
-            else:
-                self.console.print("[yellow]⚠ No data returned from API[/yellow]")
+                record_sync_complete()
+                return True
 
-            record_sync_complete()
-                
+            # No data is not a successful sync: leave last_sync alone.
+            self.console.print("[yellow]⚠ No data returned from API[/yellow]")
+            update_sync_info(sync_status='idle')
+            return False
+
         except Exception as e:
             self.console.print(f"[red]✗ Scheduled fetch failed: {e}[/red]")
             logger.exception("Scheduled fetch failed")
@@ -133,16 +156,26 @@ class ConsumptionScheduler:
             self._session = None
             # Record sync error but still mark it as no longer syncing
             update_sync_info(sync_status='idle')
-    
+            return False
+
     def backfill_consumption(self, start_date: str = None, end_date: str = None, max_attempts: int = 5) -> None:
         """
         Backfill missing consumption data.
         
         Args:
             start_date: Start date for backfill (YYYY-MM-DD). If None, defaults to 90 days ago.
-            end_date: End date for backfill (YYYY-MM-DD). If None, defaults to today.
+            end_date: End date for backfill (YYYY-MM-DD). If None, defaults to yesterday.
             max_attempts: Maximum number of date ranges to attempt per backfill run.
         """
+        if not self._fetch_lock.acquire(blocking=False):
+            self.console.print("[yellow]⚠ Another fetch is running; skipping backfill[/yellow]")
+            return
+        try:
+            self._backfill_consumption(start_date, end_date, max_attempts)
+        finally:
+            self._fetch_lock.release()
+
+    def _backfill_consumption(self, start_date: str = None, end_date: str = None, max_attempts: int = 5) -> None:
         from datetime import datetime, timedelta
         
         try:

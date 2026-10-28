@@ -456,7 +456,6 @@ def create_session(login: str, password: str) -> requests.Session:
 
     console.print("\n  [DEBUG] Attempting login...")
     console.print(f"  [DEBUG] URL: {LOGIN_URL}")
-    console.print(f"  [DEBUG] Login username: {login}")
 
     # POST login — session will automatically store any cookies from the response
     resp = _request(
@@ -477,7 +476,6 @@ def create_session(login: str, password: str) -> requests.Session:
     console.print(f"\n  [DEBUG] Response Status Code: {resp.status_code}")
     console.print(f"  [DEBUG] Response URL (after redirects): {resp.url}")
     console.print(f"  [DEBUG] Response Content Length: {len(resp.content)} bytes", style="dim")
-    console.print(f"  [DEBUG] Session Cookies: {dict(session.cookies)}", style="dim")
     
     # Check we didn't land back on the login page (failed auth)
     if "loginProcess" in resp.url or "start" in resp.url:
@@ -494,7 +492,7 @@ def create_session(login: str, password: str) -> requests.Session:
             "This may indicate failed authentication.[/yellow]"
         )
     else:
-        console.print(f"\n  ✓ Logged in successfully. Session cookies: {list(session.cookies.keys())}")
+        console.print("\n  ✓ Logged in successfully.")
     
     return session
 
@@ -589,8 +587,7 @@ def fetch_data(session: requests.Session, payload: dict) -> dict:
     """
     console = Console()
     
-    console.print(f"\n  [DEBUG] Fetching data with cookies: {dict(session.cookies)}")
-    console.print(f"  [DEBUG] Data fetch URL: {DATA_URL}")
+    console.print(f"\n  [DEBUG] Data fetch URL: {DATA_URL}")
     console.print(f"  [DEBUG] Payload dateType: {payload.get('dateType', 'UNKNOWN')}")
     console.print(f"  [DEBUG] Payload userTimeZone: {payload.get('userTimeZone', 'UNKNOWN')}")
     

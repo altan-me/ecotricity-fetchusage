@@ -37,7 +37,7 @@ def main():
         console.print("    export ECOTRICITY_PASSWORD='your_password'")
         sys.exit(1)
     
-    console.print(f"[green]✓ Credentials found (login: {login[:3]}...)[/green]")
+    console.print("[green]✓ Credentials found[/green]")
     
     # Check database
     console.print("\n[yellow]Step 2: Checking database...[/yellow]")

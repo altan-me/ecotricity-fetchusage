@@ -958,6 +958,11 @@
 
         function updateInsights(summary, daily, trends) {
             const last30 = summary.last30Days;
+
+            // Nothing to summarise before the first successful fetch.
+            if (Object.keys(daily).length === 0) {
+                return;
+            }
             
             // Time series insight
             const peakDay = daily[Object.keys(daily).reduce((a, b) => 

@@ -21,8 +21,6 @@ from database import (
     get_cost_trend,
     get_sync_info,
     update_sync_info,
-    record_sync_start,
-    record_sync_complete,
     TOTAL_COST_PER_KWH,
 )
 
@@ -261,30 +259,22 @@ def api_sync_trigger():
             "status": "unavailable",
             "message": "Sync not available. Please ensure app is running with 'python run.py all' or scheduler is initialized."
         }), 503
-    
+
+    # Refuse overlap: two logins on one session, two writers on one SQLite file.
+    if _scheduler.is_fetching():
+        return jsonify({
+            "error": "Sync already running",
+            "status": "syncing",
+            "message": "A sync is already in progress. Wait for it to finish."
+        }), 409
+
     try:
-        # Record sync start
-        try:
-            record_sync_start()
-            print(f"[app] Recorded sync start for {date_range}")
-        except Exception as e:
-            print(f"[app] Warning: Failed to record sync start: {e}")
-        
         # Run fetch in background thread to avoid blocking the API response
         def run_fetch():
             try:
                 print(f"[app] Starting fetch_and_store in background thread for {date_range}")
                 _scheduler.fetch_and_store(date_range=date_range)
-                try:
-                    record_sync_complete()
-                    print("[app] Recorded sync complete")
-                except Exception as e:
-                    print(f"[app] Warning: Failed to record sync complete: {e}")
             except Exception as e:
-                try:
-                    update_sync_info(sync_status='idle')
-                except:
-                    pass
                 print(f"[app] Manual sync failed: {e}")
                 import traceback
                 traceback.print_exc()

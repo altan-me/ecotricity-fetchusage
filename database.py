@@ -257,7 +257,9 @@ def get_missing_date_ranges(start_date: str = None, end_date: str = None) -> Lis
     from datetime import datetime, timedelta
     
     if end_date is None:
-        end_date = datetime.now().strftime("%Y-%m-%d")
+        # Yesterday: today never has final data yet, so asking for it every run
+        # only wastes a request.
+        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     
     if start_date is None:
         # Default to 90 days back
@@ -311,8 +313,11 @@ def get_missing_date_ranges(start_date: str = None, end_date: str = None) -> Lis
     
     # Add final range
     ranges.append((range_start, range_end))
-    
-    return ranges
+
+    # Skip ranges whose last failure is recent and still unretried, so a period
+    # the portal has no data for is not re-requested on every startup/weekly run.
+    recent_failures = set(get_failed_fetch_dates(days_back=7))
+    return [r for r in ranges if r[1] not in recent_failures]
 
 
 def get_last_backfill_date() -> Optional[str]:
@@ -343,10 +348,14 @@ def get_failed_fetch_dates(days_back: int = 30) -> List[str]:
     cutoff = (datetime.now() - timedelta(days=days_back)).isoformat()
     
     cursor.execute("""
-        SELECT DISTINCT date_requested FROM fetch_attempts
-        WHERE success = 0 
-        AND attempt_date > ?
-        ORDER BY date_requested DESC
+        SELECT DISTINCT f.date_requested FROM fetch_attempts f
+        WHERE f.success = 0
+        AND f.attempt_date > ?
+        AND NOT EXISTS (
+            SELECT 1 FROM fetch_attempts s
+            WHERE s.date_requested = f.date_requested AND s.success = 1
+        )
+        ORDER BY f.date_requested DESC
     """, (cutoff,))
     
     failed_dates = [row[0] for row in cursor.fetchall()]
