@@ -2,6 +2,9 @@
 
 Fetches your power consumption from the Ecotricity portal, stores it in SQLite, and serves an interactive dashboard.
 
+> [!WARNING]
+> **Unofficial and unsupported.** This project is not affiliated with Ecotricity. It works by reverse engineering the dashboard at `ecotricity.co.nz` and calling the same endpoints the website uses — Ecotricity does not provide a public API. Their site can change at any time without notice, which may break login, data fetching, or the whole tool. Use it at your own risk and check your usage in the official portal if it matters.
+
 ![Dashboard overview](docs/images/dashboard_example1.webp)
 ![Dashboard charts](docs/images/dashboard_example2.webp)
 
