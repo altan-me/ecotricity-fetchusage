@@ -3,19 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚡ Power Consumption Dashboard</title>
+    <title>Power Consumption Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.0/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         :root {
-            --brand: #667eea;
-            --brand-deep: #764ba2;
-            --ink: #1f2937;
-            --muted: #64748b;
-            --border: #e6e8f0;
-            --surface: #ffffff;
-            --radius: 14px;
-            --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.07);
+            /* Neutral paper base + a small, functional palette. */
+            --bg:          #f5f6f3;
+            --surface:     #ffffff;
+            --ink:         #1c2320;
+            --text:        #37423c;
+            --muted:       #647066;
+            --border:      #e2e6e1;
+            --border-soft: #eef1ed;
+
+            --usage:       #2f5bd7;  /* usage figures, primary actions */
+            --usage-dark:  #2449b8;
+            --usage-tint:  #eef2ff;
+            --cost:        #0a766b;  /* cost figures */
+            --cost-tint:   #f0f8f6;
+            --up:          #0b7a52;  /* positive trend / healthy status */
+            --down:        #b42318;  /* negative trend / error status */
+            --warn:        #b45309;  /* neutral band / in-progress status */
+
+            --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                    'Helvetica Neue', Arial, sans-serif;
+            --mono: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
         }
 
         * {
@@ -25,495 +38,304 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            background-attachment: fixed;
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 15px;
+            line-height: 1.6;
             min-height: 100vh;
-            padding: 24px 20px 40px;
-            color: var(--ink);
-            line-height: 1.5;
+            padding: 0 20px 48px;
             -webkit-font-smoothing: antialiased;
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
+        ::selection {
+            background: #dbe6ff;
+            color: #16244d;
         }
 
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 32px;
+        input, textarea, [contenteditable] {
+            caret-color: var(--usage);
         }
 
-        .header h1 {
-            display: inline-flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
-            gap: 12px;
-            max-width: 100%;
-            font-size: clamp(1.5rem, 3.5vw, 2.25rem);
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            margin-bottom: 8px;
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
         }
 
-        .brand-mark {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 42px;
-            height: 42px;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.16);
-            border: 1px solid rgba(255, 255, 255, 0.28);
-            flex-shrink: 0;
+        ::-webkit-scrollbar-track {
+            background: var(--bg);
         }
 
-        .header p {
-            font-size: 1rem;
-            color: rgba(255, 255, 255, 0.82);
+        ::-webkit-scrollbar-thumb {
+            background: #cdd4cd;
+            border: 2px solid var(--bg);
+            border-radius: 6px;
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
+        ::-webkit-scrollbar-thumb:hover {
+            background: #aeb9b0;
         }
 
-        .stat-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 22px;
-            box-shadow: var(--shadow);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        @media (hover: hover) {
-            .stat-card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06), 0 14px 32px rgba(15, 23, 42, 0.12);
-            }
-        }
-
-        .stat-card h3 {
-            color: var(--muted);
-            font-size: 0.72rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.09em;
-            margin-bottom: 10px;
-        }
-
-        .stat-card .value {
-            font-size: 2rem;
-            font-weight: 700;
-            line-height: 1.15;
-            letter-spacing: -0.01em;
-            color: var(--brand-deep);
-            font-variant-numeric: tabular-nums;
-        }
-
-        .stat-card .unit {
-            color: var(--muted);
-            font-size: 0.85rem;
-            margin-left: 5px;
-        }
-
-        .stat-card .subtext {
-            font-size: 0.8rem;
-            color: var(--muted);
-            margin-top: 8px;
-        }
-
-        .stat-card.trend {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-color: transparent;
-            color: white;
-        }
-
-        .stat-card.trend h3 {
-            color: rgba(255, 255, 255, 0.85);
-        }
-
-        .stat-card.trend .value {
-            color: white;
-        }
-
-        .stat-card.trend .unit {
-            color: rgba(255, 255, 255, 0.85);
-        }
-
-        .stat-card.trend .subtext {
-            color: rgba(255, 255, 255, 0.85);
-        }
-
-        .trend-up {
-            color: #047857;
-        }
-
-        .trend-down {
-            color: #b91c1c;
-        }
-
-        .cost-card {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            border-color: transparent;
-            color: white;
-        }
-
-        .cost-card h3 {
-            color: rgba(255, 255, 255, 0.9);
-        }
-
-        .cost-card .value {
-            color: white;
-        }
-
-        .cost-card .unit {
-            color: rgba(255, 255, 255, 0.9);
-        }
-
-        .cost-card .subtext {
-            color: rgba(255, 255, 255, 0.92);
-        }
-
-        .chart-container {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 24px;
-            margin-bottom: 24px;
-            box-shadow: var(--shadow);
-            min-width: 0;
-        }
-
-        .chart-container h2 {
-            color: var(--ink);
-            margin-bottom: 18px;
-            font-size: 1.15rem;
-            font-weight: 650;
-            letter-spacing: -0.01em;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .chart-wrapper {
-            position: relative;
-            height: 400px;
-            margin-bottom: 30px;
-            overflow-x: auto;
-            overflow-y: hidden;
-            border-radius: 8px;
-            scroll-behavior: smooth;
-        }
-
-        .chart-wrapper > canvas {
-            display: block;
-        }
-
-        .chart-wrapper.small {
-            height: 300px;
-        }
-
-        /* Scrollbar styling */
-        .chart-wrapper::-webkit-scrollbar {
-            height: 8px;
-        }
-
-        .chart-wrapper::-webkit-scrollbar-track {
-            background: #f0f0f0;
-            border-radius: 8px;
-        }
-
-        .chart-wrapper::-webkit-scrollbar-thumb {
-            background: #667eea;
-            border-radius: 8px;
-            transition: background 0.3s;
-        }
-
-        .chart-wrapper::-webkit-scrollbar-thumb:hover {
-            background: #764ba2;
-        }
-
-        /* Firefox scrollbar */
-        .chart-wrapper {
-            scrollbar-color: #667eea #f0f0f0;
+        * {
+            scrollbar-color: #cdd4cd var(--bg);
             scrollbar-width: thin;
         }
 
-        .chart-controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 16px;
-            align-items: center;
-            font-size: 0.85rem;
-            color: var(--muted);
-            min-width: 0;
-        }
-
-        .chart-controls button {
-            background: #eef0fb;
-            color: #4338ca;
-            border: 1px solid #dfe3f7;
-            padding: 7px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            font: inherit;
-            font-weight: 600;
-            transition: background 0.15s ease, border-color 0.15s ease;
-        }
-
-        .chart-controls button:hover {
-            background: #e0e4fa;
-            border-color: #c7cdf2;
-        }
-
-        .zoom-info {
-            font-size: 0.82rem;
-            color: var(--muted);
-            background: #f8f9ff;
-            padding: 7px 12px;
-            border-radius: 8px;
-            border-left: 3px solid var(--brand);
-        }
-
-        .two-column {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(450px, 100%), 1fr));
-            gap: 20px;
-        }
-
-        .insight {
-            background: #f5f7ff;
-            border-left: 3px solid var(--brand);
-            padding: 14px 16px;
-            border-radius: 8px;
-            margin-top: 16px;
-            font-size: 0.9rem;
-            color: #475569;
-        }
-
-        .empty-state {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 40px 24px;
-            text-align: center;
-            margin-bottom: 24px;
-        }
-
-        .empty-state h2 {
-            font-size: 1.15rem;
-            margin-bottom: 8px;
-        }
-
-        .empty-state p {
-            color: var(--muted);
-            max-width: 46ch;
-            margin: 0 auto 12px;
-        }
-
-        .empty-state code {
-            background: #f1f5f9;
-            border-radius: 6px;
-            padding: 2px 6px;
-            font-size: 0.9em;
-            color: #334155;
-        }
-
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
-        }
-
         :focus-visible {
-            outline: 3px solid #c4b5fd;
+            outline: 2px solid var(--usage);
             outline-offset: 2px;
         }
 
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: white;
-            font-size: 1rem;
+        .container {
+            max-width: 1320px;
+            margin: 0 auto;
         }
 
-        .error {
-            background: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-            padding: 16px 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-
-        .footer {
-            text-align: center;
-            color: rgba(255, 255, 255, 0.85);
-            margin-top: 36px;
-            font-size: 0.85rem;
-        }
-
-        .export-buttons {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .export-btn {
-            background: #eef0fb;
-            color: #4338ca;
-            border: 1px solid #dfe3f7;
-            padding: 10px 18px;
-            border-radius: 8px;
-            cursor: pointer;
-            font: inherit;
-            font-weight: 600;
-            transition: background 0.15s ease, border-color 0.15s ease;
-        }
-
-        .export-btn:hover {
-            background: #e0e4fa;
-            border-color: #c7cdf2;
-        }
-
-        .sync-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px 22px;
-            box-shadow: var(--shadow);
-            margin-bottom: 24px;
+        /* --- Top bar ---------------------------------------------------- */
+        .topbar {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 20px;
+            gap: 16px;
+            padding: 14px 2px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
             flex-wrap: wrap;
         }
 
-        .sync-info {
-            flex: 1;
-            min-width: 250px;
-        }
-
-        .sync-info h3 {
-            color: var(--muted);
-            font-size: 0.72rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.09em;
-            margin-bottom: 10px;
-        }
-
-        .sync-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-            gap: 15px;
-            margin-top: 10px;
-        }
-
-        .sync-detail-item {
-            font-size: 0.9rem;
-        }
-
-        .sync-detail-label {
-            color: var(--muted);
-            font-size: 0.72rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            margin-bottom: 4px;
-        }
-
-        .sync-detail-value {
+        .brand {
             color: var(--ink);
-            font-weight: 500;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        .brand span {
+            color: var(--usage);
+            padding: 0 4px;
+        }
+
+        /* Compact sync status + controls, docked in the top bar */
+        .sync-compact {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-left: auto;
+        }
+
+        .sync-compact-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .sync-line {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            white-space: nowrap;
+        }
+
+        .sync-label {
+            color: var(--muted);
+            font-size: 0.72rem;
+        }
+
+        .sync-compact-value {
+            color: var(--ink);
+            font-family: var(--mono);
+            font-size: 0.76rem;
             font-variant-numeric: tabular-nums;
         }
 
-        .sync-status {
+        .sync-line--next .sync-compact-value {
+            color: var(--muted);
+        }
+
+        .masthead {
+            padding: 36px 0 26px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .masthead h1 {
+            color: var(--ink);
+            font-size: clamp(1.55rem, 3.2vw, 2.15rem);
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.25;
+        }
+
+        .masthead h1 .sep {
+            color: var(--usage);
+            font-weight: 400;
+            padding: 0 2px;
+        }
+
+        .masthead p {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        /* --- Sections --------------------------------------------------- */
+        .section {
+            margin-top: 32px;
+        }
+
+        .section-head {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
+            margin-bottom: 14px;
         }
 
-        .sync-status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #10b981;
-            animation: pulse 2s infinite;
+        .section-head h2 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.98rem;
+            font-weight: 650;
+            color: var(--ink);
+            white-space: nowrap;
         }
 
-        .sync-status-dot.syncing {
-            animation: pulse 1s infinite;
+        .section-marker {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            background: var(--usage);
+            flex-shrink: 0;
         }
 
-        .sync-status-dot.error {
-            background: #ef4444;
-            animation: none;
+        .section--cost .section-marker,
+        .section--ledger .section-marker {
+            background: var(--cost);
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        .section--utility .section-marker {
+            background: #9aa69c;
         }
 
-        .sync-button {
+        .section-head .rule {
+            flex: 1;
+            border-top: 1px solid var(--border);
+        }
+
+        .section-head .meta {
+            font-size: 0.76rem;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        /* --- Buttons ---------------------------------------------------- */
+        .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 11px 20px;
-            border-radius: 8px;
-            cursor: pointer;
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid #d7ddd6;
+            border-radius: 6px;
+            padding: 8px 14px;
             font: inherit;
+            font-size: 0.8rem;
             font-weight: 600;
-            transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+            cursor: pointer;
             white-space: nowrap;
-            flex-shrink: 0;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         }
 
-        .sync-button:hover:not(:disabled) {
-            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        .btn:hover:not(:disabled) {
+            border-color: var(--usage);
+            color: var(--usage);
+            background: var(--usage-tint);
         }
 
-        .sync-button:active:not(:disabled) {
+        .btn:active:not(:disabled) {
             transform: translateY(1px);
         }
 
-        .sync-button:disabled {
-            opacity: 0.75;
+        .btn:disabled {
+            opacity: 0.5;
             cursor: not-allowed;
         }
 
-        .sync-button.syncing svg {
+        .btn--primary {
+            background: var(--usage);
+            border-color: var(--usage);
+            color: #fff;
+        }
+
+        .btn--primary:hover:not(:disabled) {
+            background: var(--usage-dark);
+            border-color: var(--usage-dark);
+            color: #fff;
+        }
+
+        .btn-sm {
+            padding: 6px 11px;
+            font-size: 0.76rem;
+        }
+
+        .btn--compact {
+            padding: 6px 10px;
+            font-size: 0.74rem;
+        }
+
+        .btn--compact.btn-icon {
+            padding: 6px 8px;
+        }
+
+        .btn-icon {
+            padding: 8px 11px;
+        }
+
+        .btn--primary.syncing svg {
             animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* --- Sync controls ---------------------------------------------- */
+        .sync-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .sync-status-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--up);
+            flex-shrink: 0;
+        }
+
+        .sync-status-dot.syncing {
+            background: var(--warn);
+        }
+
+        .sync-status-dot.error {
+            background: var(--down);
+        }
+
+        .sync-status-dot.unknown {
+            background: #9aa69c;
         }
 
         .sync-button-group {
             display: flex;
             gap: 8px;
-            align-items: center;
+            align-items: stretch;
         }
 
         .sync-dropdown {
@@ -521,22 +343,7 @@
         }
 
         .sync-dropdown-toggle {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: #eef0fb;
-            color: #4338ca;
-            border: 1px solid #dfe3f7;
-            padding: 0 10px;
-            border-radius: 8px;
-            cursor: pointer;
-            min-height: 44px;
-            transition: background 0.15s ease, border-color 0.15s ease;
-        }
-
-        .sync-dropdown-toggle:hover {
-            background: #e0e4fa;
-            border-color: #c7cdf2;
+            height: 100%;
         }
 
         .sync-dropdown-toggle svg {
@@ -552,13 +359,12 @@
             position: absolute;
             top: calc(100% + 6px);
             right: 0;
+            min-width: 190px;
             background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
-            min-width: 170px;
+            border: 1px solid #cfd6cd;
+            border-radius: 6px;
             z-index: 1000;
-            padding: 6px;
+            padding: 4px;
         }
 
         .sync-dropdown-menu.open {
@@ -568,246 +374,629 @@
         .sync-dropdown-item {
             display: block;
             width: 100%;
-            padding: 10px 12px;
-            border: none;
+            padding: 9px 11px;
+            border: 0;
+            border-radius: 4px;
             background: none;
             text-align: left;
             cursor: pointer;
             font: inherit;
-            font-size: 0.9rem;
-            border-radius: 6px;
-            transition: background-color 0.15s ease;
+            font-size: 0.82rem;
+            color: var(--text);
         }
 
         .sync-dropdown-item:hover,
         .sync-dropdown-item:focus-visible {
-            background-color: #f1f5f9;
+            background: var(--usage-tint);
+            color: var(--usage);
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        /* --- Readouts --------------------------------------------------- */
+        .readout-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .readout {
+            padding: 20px 22px;
+            border-right: 1px solid var(--border-soft);
+            min-width: 0;
+        }
+
+        .readout:last-child {
+            border-right: 0;
+        }
+
+        .readout h3 {
+            color: var(--muted);
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+
+        .readout .value {
+            font-family: var(--mono);
+            font-size: clamp(1.5rem, 2.4vw, 1.95rem);
+            font-weight: 600;
+            color: var(--usage);
+            line-height: 1.15;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+        }
+
+        .readout .unit {
+            color: var(--muted);
+            font-size: 0.78rem;
+            margin-left: 5px;
+            white-space: nowrap;
+        }
+
+        .readout .subtext {
+            color: var(--muted);
+            font-size: 0.78rem;
+            margin-top: 9px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .section--cost .readout .value {
+            color: var(--cost);
+        }
+
+        .readout .value.trend-up,
+        .section--cost .readout .value.trend-up {
+            color: var(--up);
+        }
+
+        .readout .value.trend-down,
+        .section--cost .readout .value.trend-down {
+            color: var(--down);
+        }
+
+        /* --- Charts ----------------------------------------------------- */
+        .chart-panel {
+            padding: 20px 22px 22px;
+        }
+
+        .chart-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .zoom-info {
+            color: var(--muted);
+            font-size: 0.78rem;
+            padding-left: 6px;
+        }
+
+        .range-chip {
+            margin-left: auto;
+            color: var(--muted);
+            font-family: var(--mono);
+            font-size: 0.74rem;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 360px;
+            border: 1px solid var(--border-soft);
+            border-radius: 6px;
+            background: var(--surface);
+            overflow: hidden;
+        }
+
+        .chart-wrapper > canvas {
+            display: block;
+        }
+
+        .chart-wrapper.small {
+            height: 280px;
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 20px;
+        }
+
+        .insight {
+            margin-top: 14px;
+            background: #f8faf8;
+            border: 1px solid var(--border-soft);
+            border-radius: 6px;
+            padding: 12px 14px;
+            color: var(--text);
+            font-size: 0.82rem;
+            line-height: 1.7;
+        }
+
+        .insight::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 2px;
+            background: var(--usage);
+            margin-right: 8px;
+            vertical-align: 2px;
+        }
+
+        .insight strong {
+            color: var(--ink);
+            font-weight: 650;
+        }
+
+        /* --- Ledger ----------------------------------------------------- */
+        .ledger-scroll {
+            overflow-x: auto;
+        }
+
+        .ledger {
+            width: 100%;
+            border-collapse: collapse;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .ledger th {
+            color: var(--muted);
+            font-size: 0.76rem;
+            font-weight: 600;
+            text-align: right;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .ledger td {
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.82rem;
+            text-align: right;
+            padding: 11px 12px;
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .ledger th:first-child,
+        .ledger td:first-child {
+            text-align: left;
+            font-family: var(--font);
+        }
+
+        .ledger tbody tr:hover {
+            background: #f8faf8;
+        }
+
+        .ledger td.num {
+            color: var(--ink);
+        }
+
+        .ledger td.cost {
+            color: var(--cost);
+            font-weight: 600;
+        }
+
+        .ledger .placeholder {
+            text-align: center;
+            color: var(--muted);
+            padding: 24px;
+            font-family: var(--font);
+        }
+
+        /* --- Export / footer -------------------------------------------- */
+        .export-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .footer {
+            margin-top: 32px;
+            padding-top: 18px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .footer span {
+            color: var(--text);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* --- States ----------------------------------------------------- */
+        .loading {
+            padding: 64px 0;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .error {
+            background: #fff7f6;
+            border: 1px solid #f3c6c1;
+            border-radius: 6px;
+            color: var(--down);
+            padding: 14px 16px;
+            margin-bottom: 20px;
+            font-size: 0.86rem;
+        }
+
+        .error::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--down);
+            margin-right: 9px;
+        }
+
+        .empty-state {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 44px 24px;
+            text-align: center;
+            color: var(--text);
+        }
+
+        .empty-state h2 {
+            color: var(--ink);
+            font-size: 1.05rem;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            color: var(--muted);
+            max-width: 52ch;
+            margin: 0 auto 12px;
+            font-size: 0.88rem;
+        }
+
+        .empty-state code {
+            background: var(--usage-tint);
+            color: var(--usage);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.9em;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        @media (max-width: 980px) {
+            .readout-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .readout {
+                border-bottom: 1px solid var(--border-soft);
+            }
+            .readout:nth-child(2n) {
+                border-right: 0;
+            }
+            .readout:nth-last-child(-n+2) {
+                border-bottom: 0;
+            }
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 560px) {
+            body {
+                padding: 0 12px 32px;
+                font-size: 14px;
+            }
+            .topbar {
+                font-size: 0.76rem;
+                gap: 10px;
+            }
+            .sync-compact {
+                width: 100%;
+                margin-left: 0;
+                justify-content: space-between;
+            }
+            .masthead {
+                padding: 28px 0 22px;
+            }
+            .section {
+                margin-top: 26px;
+            }
+            .section-head .meta {
+                display: none;
+            }
+            .readout-grid {
+                grid-template-columns: 1fr;
+            }
+            .readout {
+                padding: 16px 18px;
+                border-right: 0;
+                border-bottom: 1px solid var(--border-soft);
+            }
+            .readout:last-child {
+                border-bottom: 0;
+            }
+            .sync-button-group {
+                flex-shrink: 0;
+            }
+            .chart-panel {
+                padding: 16px 14px 18px;
+            }
+            .chart-wrapper {
+                height: 320px;
+            }
+            .chart-wrapper.small {
+                height: 260px;
+            }
+            .zoom-info {
+                flex-basis: 100%;
+                padding-left: 0;
+            }
+            .range-chip {
+                margin-left: 0;
+            }
+            .ledger {
+                min-width: 520px;
+            }
         }
 
         @media (prefers-reduced-motion: reduce) {
             *,
-            .sync-status-dot,
-            .sync-button.syncing svg {
+            .btn--primary.syncing svg {
                 animation: none !important;
                 transition: none !important;
-            }
-            .chart-wrapper {
-                scroll-behavior: auto;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .header h1 {
-                font-size: 1.45rem;
-            }
-
-            .chart-container {
-                padding: 18px;
-            }
-
-            .sync-card {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .sync-details {
-                grid-template-columns: 1fr;
-            }
-
-            .sync-button {
-                width: 100%;
-                text-align: center;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>
-                <span class="brand-mark" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z"/></svg>
-                </span>
-                Power Consumption Dashboard
-            </h1>
-            <p>Historical analysis and insights</p>
+        <div class="topbar">
+            <div class="brand">ECOTRICITY<span>//</span>POWER MONITOR</div>
+            <div class="sync-compact">
+                <div class="sync-compact-info">
+                    <div class="sync-line">
+                        <span class="sync-status-dot" id="sync-status-dot" aria-hidden="true"></span>
+                        <span class="sync-label">Last sync</span>
+                        <span class="sync-compact-value" id="last-sync-time">—</span>
+                    </div>
+                    <div class="sync-line sync-line--next">
+                        <span class="sync-label">Next</span>
+                        <span class="sync-compact-value" id="next-sync-time">—</span>
+                    </div>
+                </div>
+                <div class="sync-button-group">
+                    <button id="sync-trigger-btn" class="btn btn--primary btn--compact" onclick="triggerManualSync('last 30 days')" aria-label="Sync now">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                        <span id="sync-btn-label">Sync now</span>
+                    </button>
+                    <div class="sync-dropdown">
+                        <button class="btn btn-icon btn--compact sync-dropdown-toggle" onclick="toggleSyncDropdown()" aria-label="Choose sync range" aria-expanded="false" aria-controls="sync-dropdown-menu">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="sync-dropdown-menu" id="sync-dropdown-menu">
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 7 days')">Last 7 days</button>
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 14 days')">Last 14 days</button>
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 30 days')">Last 30 days</button>
+                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 3 months')">Last 3 months</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <header class="masthead">
+            <h1>Power consumption <span class="sep">/</span> dashboard</h1>
+            <p>Historical analysis and insights</p>
+        </header>
 
         <div id="error-container" role="alert" aria-live="assertive"></div>
 
         <div id="loading" class="loading" role="status" aria-live="polite">Loading data…</div>
 
-        <div id="content" style="display: none;">
+        <main id="content" style="display: none;">
             <div id="empty-state" class="empty-state" hidden>
                 <h2>No readings yet</h2>
                 <p>The dashboard fills in after the first successful fetch. Run <code>python run.py fetch</code> or wait for the daily sync.</p>
             </div>
 
-            <!-- Sync Status Card -->
-            <div class="sync-card">
-                <div class="sync-info">
-                    <h3 id="sync-heading">Sync Status</h3>
-                    <div class="sync-details">
-                        <div class="sync-detail-item">
-                            <div class="sync-detail-label">Last Sync</div>
-                            <div class="sync-detail-value">
-                                <span class="sync-status">
-                                    <span class="sync-status-dot" id="sync-status-dot" aria-hidden="true"></span>
-                                    <span id="last-sync-time">—</span>
-                                </span>
-                            </div>
-                        </div>
-                        <div class="sync-detail-item">
-                            <div class="sync-detail-label">Next Scheduled Sync</div>
-                            <div class="sync-detail-value" id="next-sync-time">—</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="sync-button-group">
-                    <button id="sync-trigger-btn" class="sync-button" onclick="triggerManualSync('last 30 days')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-                        <span id="sync-btn-label">Sync Now</span>
-                    </button>
-                    <div class="sync-dropdown">
-                        <button class="sync-dropdown-toggle" onclick="toggleSyncDropdown()" aria-label="Choose sync range" aria-expanded="false" aria-controls="sync-dropdown-menu">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                        </button>
-                        <div class="sync-dropdown-menu" id="sync-dropdown-menu">
-                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 7 days')">Last 7 Days</button>
-                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 14 days')">Last 14 Days</button>
-                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 30 days')">Last 30 Days</button>
-                            <button class="sync-dropdown-item" onclick="triggerManualSync('last 3 months')">Last 3 Months</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Summary Statistics -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h3>Last 30 Days Total</h3>
-                    <div><span class="value" id="stat-total-30">—</span><span class="unit">kWh</span></div>
+            <section class="section section--usage">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>30-day usage</h2>
+                    <span class="rule"></span>
+                    <span class="meta">kWh</span>
                 </div>
-                <div class="stat-card">
-                    <h3>Last 30 Days Average</h3>
-                    <div><span class="value" id="stat-avg-30">—</span><span class="unit">kWh/day</span></div>
+                <div class="readout-grid">
+                    <div class="readout">
+                        <h3>Last 30 days total</h3>
+                        <div><span class="value" id="stat-total-30">—</span><span class="unit">kWh</span></div>
+                    </div>
+                    <div class="readout">
+                        <h3>Last 30 days average</h3>
+                        <div><span class="value" id="stat-avg-30">—</span><span class="unit">kWh/day</span></div>
+                    </div>
+                    <div class="readout">
+                        <h3>Last 30 days range</h3>
+                        <div><span class="value" id="stat-range-30">—</span></div>
+                        <div class="subtext"><span id="stat-min-30">—</span> to <span id="stat-max-30">—</span> kWh</div>
+                    </div>
+                    <div class="readout">
+                        <h3>30-day trend</h3>
+                        <div><span class="value" id="stat-trend">—</span></div>
+                        <div class="subtext">vs. first half of period</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <h3>Last 30 Days Range</h3>
-                    <div><span class="value" id="stat-range-30">—</span></div>
-                    <div class="subtext"><span id="stat-min-30">—</span> to <span id="stat-max-30">—</span> kWh</div>
-                </div>
-                <div class="stat-card trend">
-                    <h3>30-Day Trend</h3>
-                    <div><span class="value" id="stat-trend">—</span></div>
-                    <div class="subtext">vs. first half of period</div>
-                </div>
-            </div>
+            </section>
 
             <!-- Cost Statistics -->
-            <div class="stats-grid">
-                <div class="stat-card cost-card">
-                    <h3>Last 30 Days Total Cost</h3>
-                    <div><span class="value" id="cost-total-30">—</span><span class="unit">NZD</span></div>
-                    <div class="subtext">incl. 15% GST</div>
+            <section class="section section--cost">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>Cost analysis</h2>
+                    <span class="rule"></span>
+                    <span class="meta">NZD · incl. 15% GST</span>
                 </div>
-                <div class="stat-card cost-card">
-                    <h3>Daily Average Cost</h3>
-                    <div><span class="value" id="cost-avg-daily">—</span><span class="unit">NZD/day</span></div>
-                </div>
-                <div class="stat-card cost-card">
-                    <h3>Daily Cost Range</h3>
-                    <div><span class="value" id="cost-range">—</span></div>
-                    <div class="subtext"><span id="cost-min">—</span> to <span id="cost-max">—</span> NZD</div>
-                </div>
-                <div class="stat-card cost-card">
-                    <h3>Cost Trend</h3>
-                    <div><span class="value" id="cost-trend">—</span></div>
-                    <div class="subtext">vs. previous period</div>
-                </div>
-            </div>
-
-            <!-- Main Charts -->
-            <div class="chart-container">
-                <h2 id="timeseries-heading">Daily Consumption Over Time</h2>
-                <div class="chart-controls">
-                    <button onclick="zoomChart(1.2)">Zoom in</button>
-                    <button onclick="zoomChart(0.8)">Zoom out</button>
-                    <button onclick="resetChart()">Reset view</button>
-                    <span class="zoom-info">All available data · scroll sideways for older readings · scroll wheel or drag to zoom</span>
-                </div>
-                <div class="chart-wrapper">
-                    <canvas id="timeSeriesChart" role="img" aria-label="Line chart of daily power consumption over time"></canvas>
-                </div>
-                <div class="insight" id="insight-timeseries"></div>
-            </div>
-
-            <!-- Two-column layout for breakdown charts -->
-            <div class="two-column">
-                <div class="chart-container">
-                    <h2>Average by Day of Week</h2>
-                    <div class="chart-wrapper small">
-                        <canvas id="dayOfWeekChart" role="img" aria-label="Bar chart of average consumption by day of week"></canvas>
+                <div class="readout-grid">
+                    <div class="readout">
+                        <h3>Last 30 days total cost</h3>
+                        <div><span class="value" id="cost-total-30">—</span><span class="unit">NZD</span></div>
+                        <div class="subtext">incl. 15% GST</div>
                     </div>
-                    <div class="insight" id="insight-dayofweek"></div>
-                </div>
-
-                <div class="chart-container">
-                    <h2>High vs Low Days</h2>
-                    <div class="chart-wrapper small">
-                        <canvas id="highlowChart" role="img" aria-label="Doughnut chart grouping days into below, near and above average"></canvas>
+                    <div class="readout">
+                        <h3>Daily average cost</h3>
+                        <div><span class="value" id="cost-avg-daily">—</span><span class="unit">NZD/day</span></div>
                     </div>
-                    <div class="insight" id="insight-highlow"></div>
+                    <div class="readout">
+                        <h3>Daily cost range</h3>
+                        <div><span class="value" id="cost-range">—</span></div>
+                        <div class="subtext"><span id="cost-min">—</span> to <span id="cost-max">—</span> NZD</div>
+                    </div>
+                    <div class="readout">
+                        <h3>Cost trend</h3>
+                        <div><span class="value" id="cost-trend">—</span></div>
+                        <div class="subtext">vs. previous period</div>
+                    </div>
                 </div>
-            </div>
+            </section>
+
+            <!-- Main Chart -->
+            <section class="section section--usage">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>Consumption timeline</h2>
+                    <span class="rule"></span>
+                    <span class="meta">all available data</span>
+                </div>
+                <div class="panel chart-panel">
+                    <div class="chart-controls">
+                        <button class="btn btn-sm" onclick="zoomChart(1.2)">Zoom in</button>
+                        <button class="btn btn-sm" onclick="zoomChart(0.8)">Zoom out</button>
+                        <button class="btn btn-sm" onclick="resetChart()">Reset view</button>
+                        <span class="zoom-info">Wheel to zoom · Alt+drag or right-drag to pan</span>
+                        <span class="range-chip" id="timeline-range">—</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="timeSeriesChart" role="img" aria-label="Line chart of daily power consumption over time"></canvas>
+                    </div>
+                    <div class="insight" id="insight-timeseries"></div>
+                </div>
+            </section>
+
+            <!-- Breakdown Charts -->
+            <section class="section section--usage">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>Patterns</h2>
+                    <span class="rule"></span>
+                    <span class="meta">weekly · distribution</span>
+                </div>
+                <div class="two-column">
+                    <div class="panel chart-panel">
+                        <div class="chart-controls"><span class="zoom-info">Average by day of week</span></div>
+                        <div class="chart-wrapper small">
+                            <canvas id="dayOfWeekChart" role="img" aria-label="Bar chart of average consumption by day of week"></canvas>
+                        </div>
+                        <div class="insight" id="insight-dayofweek"></div>
+                    </div>
+                    <div class="panel chart-panel">
+                        <div class="chart-controls"><span class="zoom-info">Last 30 readings vs. average</span></div>
+                        <div class="chart-wrapper small">
+                            <canvas id="highlowChart" role="img" aria-label="Doughnut chart grouping days into below, near and above average"></canvas>
+                        </div>
+                        <div class="insight" id="insight-highlow"></div>
+                    </div>
+                </div>
+            </section>
 
             <!-- Monthly Cost Breakdown -->
-            <div class="chart-container">
-                <h2>Monthly Cost Breakdown</h2>
-                <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
-                    <caption class="sr-only">Monthly usage, cost and average daily use</caption>
-                    <thead style="background: #f5f7ff; border-bottom: 1px solid var(--border);">
-                        <tr>
-                            <th scope="col" style="padding: 12px; text-align: left; font-weight: 600;">Month</th>
-                            <th scope="col" style="padding: 12px; text-align: right; font-weight: 600;">Usage (kWh)</th>
-                            <th scope="col" style="padding: 12px; text-align: right; font-weight: 600;">Cost (NZD)</th>
-                            <th scope="col" style="padding: 12px; text-align: right; font-weight: 600;">Avg/Day</th>
-                            <th scope="col" style="padding: 12px; text-align: right; font-weight: 600;">Days</th>
-                        </tr>
-                    </thead>
-                    <tbody id="monthlyTable">
-                        <tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">Loading…</td></tr>
-                    </tbody>
-                </table>
-                <div class="insight" id="insight-monthly" style="margin-top: 16px;"></div>
-            </div>
+            <section class="section section--ledger">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>Monthly cost breakdown</h2>
+                    <span class="rule"></span>
+                    <span class="meta">all-time ledger</span>
+                </div>
+                <div class="panel chart-panel">
+                    <div class="ledger-scroll">
+                    <table class="ledger">
+                        <caption class="sr-only">Monthly usage, cost and average daily use</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Month</th>
+                                <th scope="col">Usage (kWh)</th>
+                                <th scope="col">Cost (NZD)</th>
+                                <th scope="col">Avg/Day</th>
+                                <th scope="col">Days</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyTable">
+                            <tr><td class="placeholder" colspan="5">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <div class="insight" id="insight-monthly"></div>
+                </div>
+            </section>
 
             <!-- Export Options -->
-            <div class="chart-container">
-                <h2>Export Data</h2>
-                <div class="export-buttons">
-                    <button class="export-btn" onclick="downloadJSON()">Download JSON</button>
-                    <button class="export-btn" onclick="downloadCSV()">Download CSV</button>
+            <section class="section section--utility">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>Data export</h2>
+                    <span class="rule"></span>
                 </div>
-            </div>
+                <div class="panel chart-panel">
+                    <div class="export-row">
+                        <button class="btn" onclick="downloadJSON()">Download JSON</button>
+                        <button class="btn" onclick="downloadCSV()">Download CSV</button>
+                    </div>
+                </div>
+            </section>
 
-            <!-- Footer -->
-            <div class="footer">
+            <footer class="footer">
                 <p>Last updated: <span id="last-fetch">—</span></p>
                 <p>Data range: <span id="data-range">—</span></p>
-            </div>
-        </div>
+            </footer>
+        </main>
     </div>
 
     <script>
         let timeSeriesChart, dayOfWeekChart, highlowChart;
 
         Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-        Chart.defaults.color = '#475569';
+        Chart.defaults.color = '#647066';
+        Chart.defaults.borderColor = '#e9ede8';
+        Chart.defaults.plugins.legend.labels.usePointStyle = true;
+        Chart.defaults.plugins.legend.labels.boxWidth = 8;
+        Chart.defaults.plugins.legend.labels.padding = 16;
+        Chart.defaults.plugins.tooltip.backgroundColor = '#ffffff';
+        Chart.defaults.plugins.tooltip.borderColor = '#e2e6e1';
+        Chart.defaults.plugins.tooltip.borderWidth = 1;
+        Chart.defaults.plugins.tooltip.titleColor = '#1c2320';
+        Chart.defaults.plugins.tooltip.bodyColor = '#37423c';
+        Chart.defaults.plugins.tooltip.padding = 10;
+        Chart.defaults.plugins.tooltip.cornerRadius = 6;
+        Chart.defaults.plugins.tooltip.usePointStyle = true;
+
+        // Short, compact times for the top bar; the full timestamp lives in the tooltip.
+        function formatCompactTime(iso) {
+            return new Date(iso).toLocaleString(undefined, {
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+            });
+        }
 
         function destroyCharts() {
             // Destroy our specific chart references
@@ -835,14 +1024,14 @@
                 }
                 highlowChart = null;
             }
-            
+
             // Replace the canvas elements entirely
             const chartsToReplace = [
                 'timeSeriesChart',
-                'dayOfWeekChart', 
+                'dayOfWeekChart',
                 'highlowChart'
             ];
-            
+
             chartsToReplace.forEach(chartId => {
                 const oldCanvas = document.getElementById(chartId);
                 if (oldCanvas) {
@@ -866,6 +1055,12 @@
                 ]);
 
                 updateStats(summary, trends, costs);
+
+                const firstDate = data.dates[0];
+                const lastDate = data.dates[data.dates.length - 1];
+                document.getElementById('timeline-range').textContent = firstDate && lastDate
+                    ? `Full history: ${firstDate} to ${lastDate}`
+                    : 'No data';
 
                 // Show the panels before creating the responsive charts, otherwise
                 // they measure a hidden (zero-size) container.
@@ -910,37 +1105,22 @@
             costTrendEl.textContent = (costTrend >= 0 ? '+' : '') + costTrend.toFixed(1) + '%';
 
             document.getElementById('last-fetch').textContent = summary.lastFetch || 'Never';
-            document.getElementById('data-range').textContent = 
+            document.getElementById('data-range').textContent =
                 `${summary.dataRange.start || '—'} to ${summary.dataRange.end || '—'}`;
         }
 
         function renderCharts(data, daily) {
             // Destroy any existing charts before creating new ones
             destroyCharts();
-            
-            // Calculate canvas width based on number of data points
-            // Ensure at least 60px per data point for readability
-            const dataPointCount = data.dates.length;
-            // Cap the canvas so years of history cannot allocate a huge bitmap;
-            // the zoom/pan controls still reach older data.
-            const minCanvasWidth = Math.min(10000, Math.max(100, dataPointCount * 60));
-            
-            // Time series chart
+
+            // Time series chart: fit the whole history into the panel so the
+            // full date range stays visible, with zoom available for detail.
             const timeSeriesCanvas = document.getElementById('timeSeriesChart');
-            
-            // Set proper canvas dimensions to avoid blurriness
-            // Canvas needs width/height attributes for proper resolution
-            const wrapperHeight = 400; // Match .chart-wrapper height
-            timeSeriesCanvas.width = minCanvasWidth;
-            timeSeriesCanvas.height = wrapperHeight;
-            timeSeriesCanvas.style.width = minCanvasWidth + 'px';
-            timeSeriesCanvas.style.height = wrapperHeight + 'px';
-            
             const timeSeriesCtx = timeSeriesCanvas.getContext('2d');
             const avgAll = data.values.length
                 ? data.values.reduce((a, b) => a + b, 0) / data.values.length
                 : 0;
-            
+
             timeSeriesChart = new Chart(timeSeriesCtx, {
                 type: 'line',
                 data: {
@@ -949,35 +1129,33 @@
                         {
                             label: 'Daily Usage (kWh)',
                             data: data.values,
-                            borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderColor: '#2f5bd7',
+                            backgroundColor: 'rgba(47, 91, 215, 0.07)',
                             borderWidth: 2,
-                            tension: 0.3,
+                            tension: 0.25,
                             fill: true,
-                            pointRadius: 4,
-                            pointBackgroundColor: '#667eea',
-                            pointBorderColor: '#fff',
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#2f5bd7',
                             pointBorderWidth: 2,
                         },
                         {
                             label: 'Average',
                             data: Array(data.dates.length).fill(avgAll),
-                            borderColor: '#764ba2',
+                            borderColor: '#9aa69c',
                             borderDash: [5, 5],
-                            borderWidth: 2,
+                            borderWidth: 1.5,
                             fill: false,
                             pointRadius: 0,
-                            tension: 0.3,
+                            tension: 0.25,
                         }
                     ]
                 },
                 options: {
-                    responsive: false,
+                    responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            labels: { usePointStyle: true, padding: 20 }
-                        },
                         tooltip: {
                             callbacks: {
                                 afterLabel: function(context) {
@@ -1012,6 +1190,22 @@
                         }
                     },
                     scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 0,
+                                minRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 12,
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    const parts = String(this.getLabelForValue(value)).split('-');
+                                    if (parts.length !== 3) return parts[0];
+                                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                    return Number(parts[2]) + ' ' + months[Number(parts[1]) - 1];
+                                }
+                            }
+                        },
                         y: {
                             beginAtZero: true,
                             title: { display: true, text: 'kWh' }
@@ -1019,7 +1213,7 @@
                     }
                 }
             });
-            
+
             // Enable middle mouse button or alt+click for panning
             timeSeriesCtx.canvas.addEventListener('mousedown', handlePanStart);
             timeSeriesCtx.canvas.addEventListener('mousemove', handlePanMove);
@@ -1029,36 +1223,15 @@
             // Day of week chart
             const dayOfWeekCtx = document.getElementById('dayOfWeekChart').getContext('2d');
             const dayLabels = Object.keys(daily);
-            
+
             // Sort days by average consumption (highest to lowest)
             const sortedDays = dayLabels
                 .map(day => ({ day, average: daily[day].average }))
                 .sort((a, b) => b.average - a.average);
-            
+
             const sortedDayLabels = sortedDays.map(d => d.day);
             const dayValues = sortedDays.map(d => d.average);
-            
-            // Create gradient colors based on consumption values
-            const maxDayValue = Math.max(...dayValues);
-            const minDayValue = Math.min(...dayValues);
-            const dayBarColors = dayValues.map(value => {
-                const normalized = (value - minDayValue) / (maxDayValue - minDayValue);
-                // Gradient from light blue to deep purple
-                if (normalized < 0.5) {
-                    const ratio = normalized * 2;
-                    const r = Math.round(102 + (118 - 102) * ratio);
-                    const g = Math.round(126 + (75 - 126) * ratio);
-                    const b = Math.round(234 + (162 - 234) * ratio);
-                    return `rgb(${r}, ${g}, ${b})`;
-                } else {
-                    const ratio = (normalized - 0.5) * 2;
-                    const r = Math.round(118 + (200 - 118) * ratio);
-                    const g = Math.round(75 + (30 - 75) * ratio);
-                    const b = Math.round(162 + (40 - 162) * ratio);
-                    return `rgb(${r}, ${g}, ${b})`;
-                }
-            });
-            
+
             dayOfWeekChart = new Chart(dayOfWeekCtx, {
                 type: 'bar',
                 data: {
@@ -1066,7 +1239,8 @@
                     datasets: [{
                         label: 'Average Usage (kWh)',
                         data: dayValues,
-                        backgroundColor: dayBarColors,
+                        backgroundColor: '#2f5bd7',
+                        borderRadius: 3,
                     }]
                 },
                 options: {
@@ -1089,7 +1263,7 @@
                 ? recentValues.reduce((a, b) => a + b, 0) / recentValues.length
                 : 0;
             const highlowCtx = document.getElementById('highlowChart').getContext('2d');
-            
+
             highlowChart = new Chart(highlowCtx, {
                 type: 'doughnut',
                 data: {
@@ -1100,8 +1274,9 @@
                             recentValues.filter(v => v >= recentAverage * 0.75 && v < recentAverage * 1.25).length,
                             recentValues.filter(v => v >= recentAverage * 1.25).length,
                         ],
-                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
-                        borderWidth: 0,
+                        backgroundColor: ['#16a34a', '#e0a526', '#dc2626'],
+                        borderColor: '#ffffff',
+                        borderWidth: 2,
                     }]
                 },
                 options: {
@@ -1110,7 +1285,7 @@
                     plugins: {
                         legend: {
                             position: 'bottom',
-                            labels: { padding: 20 }
+                            labels: { padding: 16 }
                         }
                     }
                 }
@@ -1122,7 +1297,7 @@
             if (Object.keys(daily).length === 0) {
                 return;
             }
-            
+
             // Time series insight
             const dayNames = Object.keys(daily);
             const peakName = dayNames.reduce((a, b) =>
@@ -1171,45 +1346,41 @@
             try {
                 const response = await fetch('/api/costs/monthly');
                 const months = await response.json();
-                
+
                 const tbody = document.getElementById('monthlyTable');
                 tbody.innerHTML = '';
-                
+
                 if (months.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: #999;">No monthly data available</td></tr>';
+                    tbody.innerHTML = '<tr><td class="placeholder" colspan="5">No monthly data available</td></tr>';
                     return;
                 }
-                
+
                 let totalMonthsCost = 0;
                 let totalMonthsKwh = 0;
-                
+
                 months.forEach((month, idx) => {
                     const row = document.createElement('tr');
-                    row.style.borderBottom = '1px solid #e0e0e0';
-                    if (idx % 2 === 0) {
-                        row.style.backgroundColor = '#f9fafb';
-                    }
-                    
+
                     const monthName = new Date(month.year, month.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-                    
+
                     row.innerHTML = `
-                        <td style="padding: 12px; text-align: left;">${monthName}</td>
-                        <td style="padding: 12px; text-align: right;"><strong>${month.total_kwh}</strong> kWh</td>
-                        <td style="padding: 12px; text-align: right; color: #10b981;"><strong>$${month.total_cost.toFixed(2)}</strong></td>
-                        <td style="padding: 12px; text-align: right;">${month.avg_kwh} kWh</td>
-                        <td style="padding: 12px; text-align: right;">${month.days}</td>
+                        <td>${monthName}</td>
+                        <td class="num">${month.total_kwh} kWh</td>
+                        <td class="num cost">$${month.total_cost.toFixed(2)}</td>
+                        <td class="num">${month.avg_kwh} kWh</td>
+                        <td class="num">${month.days}</td>
                     `;
                     tbody.appendChild(row);
-                    
+
                     totalMonthsCost += month.total_cost;
                     totalMonthsKwh += month.total_kwh;
                 });
-                
+
                 // Add average row
                 if (months.length > 0) {
                     const avgCostPerMonth = totalMonthsCost / months.length;
                     const avgKwhPerMonth = totalMonthsKwh / months.length;
-                    document.getElementById('insight-monthly').innerHTML = 
+                    document.getElementById('insight-monthly').innerHTML =
                         `<strong>All-time average:</strong> $${avgCostPerMonth.toFixed(2)}/month (${avgKwhPerMonth.toFixed(0)} kWh/month)`;
                 }
             } catch (error) {
@@ -1291,23 +1462,25 @@
             const lastSyncEl = document.getElementById('last-sync-time');
             const nextSyncEl = document.getElementById('next-sync-time');
             const statusDotEl = document.getElementById('sync-status-dot');
-            
-            // Update last sync time
+
+            // Update last sync time (short in the bar, full timestamp on hover)
             if (syncInfo.last_sync) {
-                const lastSyncDate = new Date(syncInfo.last_sync);
-                lastSyncEl.textContent = lastSyncDate.toLocaleString();
+                lastSyncEl.textContent = formatCompactTime(syncInfo.last_sync);
+                lastSyncEl.title = new Date(syncInfo.last_sync).toLocaleString();
             } else {
                 lastSyncEl.textContent = 'Never synced';
+                lastSyncEl.title = '';
             }
-            
+
             // Update next sync time
             if (syncInfo.next_scheduled_sync) {
-                const nextSyncDate = new Date(syncInfo.next_scheduled_sync);
-                nextSyncEl.textContent = nextSyncDate.toLocaleString();
+                nextSyncEl.textContent = formatCompactTime(syncInfo.next_scheduled_sync);
+                nextSyncEl.title = new Date(syncInfo.next_scheduled_sync).toLocaleString();
             } else {
                 nextSyncEl.textContent = 'Not scheduled';
+                nextSyncEl.title = '';
             }
-            
+
             // Update status indicator
             statusDotEl.classList.remove('syncing', 'error');
             statusDotEl.classList.add(syncInfo.sync_status);
@@ -1323,12 +1496,12 @@
             const menu = document.getElementById('sync-dropdown-menu');
             setSyncDropdown(!menu.classList.contains('open'));
         }
-        
+
         // Close dropdown when clicking outside or pressing Escape
         document.addEventListener('click', (e) => {
             const toggle = e.target.closest('.sync-dropdown-toggle');
             const dropdown = e.target.closest('.sync-dropdown');
-            
+
             if (!toggle && !dropdown) {
                 setSyncDropdown(false);
             }
@@ -1344,15 +1517,15 @@
             const btn = document.getElementById('sync-trigger-btn');
             const btnLabel = document.getElementById('sync-btn-label');
             const statusDotEl = document.getElementById('sync-status-dot');
-            
+
             // Close dropdown
             setSyncDropdown(false);
-            
+
             // Disable button and show loading state
             btn.disabled = true;
             btn.classList.add('syncing');
             btnLabel.textContent = 'Syncing…';
-            
+
             try {
                 const response = await fetch(`/api/sync/trigger?range=${encodeURIComponent(dateRange)}`, {
                     method: 'POST',
@@ -1360,57 +1533,57 @@
                         'Content-Type': 'application/json'
                     }
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (response.ok || response.status === 202) {
                     // Sync started successfully
                     statusDotEl.classList.add('syncing');
-                    
+
                     // Poll for sync completion (up to 2 minutes)
                     let attempts = 0;
                     const maxAttempts = 24; // 24 * 5 seconds = 120 seconds
-                    
+
                     const pollInterval = setInterval(async () => {
                         attempts++;
-                        
+
                         try {
                             const syncResponse = await fetch('/api/sync/info');
                             const syncInfo = await syncResponse.json();
-                            
+
                             updateSyncDisplay(syncInfo);
-                            
+
                             // If sync is complete, stop polling
                             if (syncInfo.sync_status !== 'syncing') {
                                 clearInterval(pollInterval);
                                 btn.disabled = false;
                                 btn.classList.remove('syncing');
-                                btnLabel.textContent = 'Sync Now';
+                                btnLabel.textContent = 'Sync now';
                                 statusDotEl.classList.remove('syncing');
-                                
+
                                 // Reload main data to show latest
                                 await loadData();
-                                
+
                                 return;
                             }
                         } catch (error) {
                             console.error('Error polling sync status:', error);
                         }
-                        
+
                         if (attempts >= maxAttempts) {
                             clearInterval(pollInterval);
                             btn.disabled = false;
                             btn.classList.remove('syncing');
-                            btnLabel.textContent = 'Sync Now';
+                            btnLabel.textContent = 'Sync now';
                         }
                     }, 5000); // Poll every 5 seconds
-                    
+
                 } else {
                     // Error starting sync
                     statusDotEl.classList.add('error');
                     btn.disabled = false;
                     btn.classList.remove('syncing');
-                    btnLabel.textContent = 'Sync Now';
+                    btnLabel.textContent = 'Sync now';
                     console.error('Error triggering sync:', result.error || 'Unknown error');
                 }
             } catch (error) {
@@ -1418,7 +1591,7 @@
                 statusDotEl.classList.add('error');
                 btn.disabled = false;
                 btn.classList.remove('syncing');
-                btnLabel.textContent = 'Sync Now';
+                btnLabel.textContent = 'Sync now';
             }
         }
 
