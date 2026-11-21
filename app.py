@@ -17,9 +17,10 @@ from database import (
     get_all_monthly_costs,
     get_cost_statistics,
     get_cost_trend,
+    get_pricing_settings,
+    update_pricing_settings,
     get_sync_info,
     update_sync_info,
-    TOTAL_COST_PER_KWH,
 )
 
 app = Flask(__name__)
@@ -217,8 +218,28 @@ def api_costs_statistics():
         "last30Days": stats_30,
         "allTime": stats_all,
         "trend": trend,
-        "costPerKwh": TOTAL_COST_PER_KWH
+        "pricing": get_pricing_settings(),
     })
+
+
+@app.route("/api/settings")
+def api_settings_get():
+    """Get the current pricing settings."""
+    return jsonify(get_pricing_settings())
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_settings_post():
+    """Update the pricing settings from the web UI."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        settings = update_pricing_settings(
+            payload.get("cost_per_kwh"),
+            payload.get("daily_fixed_rate"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(settings)
 
 
 @app.route("/api/sync/info")

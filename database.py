@@ -4,6 +4,7 @@ Database module for storing and retrieving power consumption data.
 
 import sqlite3
 import json
+import math
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
@@ -12,10 +13,12 @@ from typing import List, Dict, Tuple, Optional
 DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = DATA_DIR / "consumption.db"
 
-# Cost configuration ($ per kWh + GST)
-COST_PER_KWH = 0.2125  # $0.2125 per kWh before GST
-GST_RATE = 0.15  # 15% GST
-TOTAL_COST_PER_KWH = COST_PER_KWH * (1 + GST_RATE)  # $0.244375 per kWh with GST
+# Default pricing. The active values are persisted in the pricing_settings
+# table and can be changed from the web UI.
+COST_PER_KWH = 0.2125  # default $/kWh before GST
+DAILY_FIXED_RATE = 0.0  # default daily fixed charge before GST
+GST_RATE = 0.15  # 15% GST (fixed)
+TOTAL_COST_PER_KWH = COST_PER_KWH * (1 + GST_RATE)  # default incl. GST, for compatibility
 
 
 def init_db() -> None:
@@ -70,7 +73,24 @@ def init_db() -> None:
             INSERT INTO sync_info (sync_status)
             VALUES ('idle')
         """)
-    
+
+    # Pricing settings: a single row holding the editable tariff.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pricing_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            cost_per_kwh REAL NOT NULL,
+            daily_fixed_rate REAL NOT NULL,
+            gst_rate REAL NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM pricing_settings")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            INSERT INTO pricing_settings (id, cost_per_kwh, daily_fixed_rate, gst_rate)
+            VALUES (1, ?, ?, ?)
+        """, (COST_PER_KWH, DAILY_FIXED_RATE, GST_RATE))
+
     conn.commit()
     conn.close()
 
@@ -356,33 +376,110 @@ def get_failed_fetch_dates(days_back: int = 30) -> List[str]:
     return failed_dates
 
 
+def get_pricing_settings() -> Dict:
+    """Return the active pricing settings (defaults if the row is missing)."""
+    defaults = {
+        "cost_per_kwh": COST_PER_KWH,
+        "daily_fixed_rate": DAILY_FIXED_RATE,
+        "gst_rate": GST_RATE,
+    }
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT cost_per_kwh, daily_fixed_rate, gst_rate
+            FROM pricing_settings WHERE id = 1
+        """)
+        row = cursor.fetchone()
+        conn.close()
+    except sqlite3.OperationalError:
+        return defaults
+
+    if not row:
+        return defaults
+    return {
+        "cost_per_kwh": row[0],
+        "daily_fixed_rate": row[1],
+        "gst_rate": row[2],
+    }
+
+
+def _validated_rate(value, name: str, maximum: float) -> float:
+    """Validate a non-negative monetary rate."""
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number")
+    if not math.isfinite(rate) or rate < 0 or rate > maximum:
+        raise ValueError(f"{name} must be between 0 and {maximum}")
+    return rate
+
+
+def update_pricing_settings(cost_per_kwh, daily_fixed_rate) -> Dict:
+    """Persist new pricing values and return the resulting settings."""
+    rate = _validated_rate(cost_per_kwh, "Price per kWh", 10)
+    fixed = _validated_rate(daily_fixed_rate, "Daily fixed charge", 100)
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO pricing_settings (id, cost_per_kwh, daily_fixed_rate, gst_rate)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            cost_per_kwh = excluded.cost_per_kwh,
+            daily_fixed_rate = excluded.daily_fixed_rate,
+            updated_at = CURRENT_TIMESTAMP
+    """, (rate, fixed, GST_RATE))
+    conn.commit()
+    conn.close()
+    return get_pricing_settings()
+
+
+def cost_components(total_kwh: float, days: int, settings: Dict) -> Dict:
+    """Split a period's cost into energy, daily fixed charge and GST (excl. rounding)."""
+    energy = total_kwh * settings["cost_per_kwh"]
+    fixed = days * settings["daily_fixed_rate"]
+    gst = (energy + fixed) * settings["gst_rate"]
+    return {
+        "energy": energy,
+        "fixed": fixed,
+        "gst": gst,
+        "total": energy + fixed + gst,
+    }
+
+
 def calculate_cost(kwh: float) -> float:
-    """Calculate cost for given kWh usage (including GST)."""
-    return kwh * TOTAL_COST_PER_KWH
+    """Total cost for a single day's kWh, including GST and the daily fixed charge."""
+    return cost_components(kwh, 1, get_pricing_settings())["total"]
 
 
 def get_daily_costs(days: int = 30) -> List[Dict]:
-    """Get consumption and costs for each day."""
+    """Get consumption and itemised costs for each day."""
+    settings = get_pricing_settings()
     rows = get_consumption_by_range(days)
-    
+
     daily_costs = []
     for row in rows:
-        cost = calculate_cost(row["value"])
+        parts = cost_components(row["value"], 1, settings)
         daily_costs.append({
             "date": row["date"],
             "weekday": row["weekday"],
             "kwh": row["value"],
-            "cost": round(cost, 2)
+            "energy_cost": round(parts["energy"], 2),
+            "fixed_cost": round(parts["fixed"], 2),
+            "gst": round(parts["gst"], 2),
+            "cost": round(parts["total"], 2),
         })
-    
+
     return daily_costs
 
 
 def get_all_monthly_costs() -> List[Dict]:
-    """Get consumption and costs for all available months."""
+    """Get consumption and itemised costs for all available months."""
+    settings = get_pricing_settings()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         SELECT 
             strftime('%Y-%m', date) as month,
@@ -395,122 +492,146 @@ def get_all_monthly_costs() -> List[Dict]:
         GROUP BY month
         ORDER BY month DESC
     """)
-    
+
     months = []
     for row in cursor.fetchall():
         total_kwh = row[1]
         month_str = row[0]
         year, month = month_str.split('-')
-        
+        days = row[2]
+        parts = cost_components(total_kwh, days, settings)
+
         months.append({
             "year": int(year),
             "month": int(month),
             "month_str": month_str,
             "total_kwh": round(total_kwh, 2),
-            "total_cost": round(calculate_cost(total_kwh), 2),
-            "days": row[2],
+            "energy_cost": round(parts["energy"], 2),
+            "fixed_cost": round(parts["fixed"], 2),
+            "gst": round(parts["gst"], 2),
+            "total_cost": round(parts["total"], 2),
+            "days": days,
             "min_kwh": round(row[3], 2),
             "max_kwh": round(row[4], 2),
             "avg_kwh": round(row[5], 2),
-            "avg_daily_cost": round(calculate_cost(row[5]), 2)
+            "avg_daily_cost": round(parts["total"] / days, 2) if days else 0.0,
         })
-    
+
     conn.close()
     return months
 
 
 def get_cost_statistics(days: Optional[int] = 30) -> Dict:
-    """Get cost statistics for the period (None means all time)."""
+    """Get itemised cost statistics for the period (None means all time)."""
+    settings = get_pricing_settings()
     rows = get_consumption_by_range(days)
-    
+
+    pricing = {
+        "cost_per_kwh": settings["cost_per_kwh"],
+        "daily_fixed_rate": settings["daily_fixed_rate"],
+        "gst_rate": settings["gst_rate"],
+    }
+
     if not rows:
         return {
             "period_days": days,
             "total_kwh": 0.0,
+            "energy_cost": 0.0,
+            "fixed_cost": 0.0,
+            "gst": 0.0,
             "total_cost": 0.0,
             "avg_daily_kwh": 0.0,
             "avg_daily_cost": 0.0,
             "min_daily_cost": 0.0,
             "max_daily_cost": 0.0,
-            "cost_per_kwh": TOTAL_COST_PER_KWH
+            "cost_per_kwh": settings["cost_per_kwh"] * (1 + settings["gst_rate"]),
+            "pricing": pricing,
         }
-    
+
     values = [r["value"] for r in rows]
     total_kwh = sum(values)
-    total_cost = calculate_cost(total_kwh)
-    avg_daily_kwh = total_kwh / len(values)
-    avg_daily_cost = calculate_cost(avg_daily_kwh)
-    
-    daily_costs = [calculate_cost(v) for v in values]
-    min_daily_cost = min(daily_costs)
-    max_daily_cost = max(daily_costs)
-    
+    parts = cost_components(total_kwh, len(values), settings)
+    daily_parts = [cost_components(v, 1, settings) for v in values]
+
     return {
         "period_days": len(values),
         "total_kwh": round(total_kwh, 2),
-        "total_cost": round(total_cost, 2),
-        "avg_daily_kwh": round(avg_daily_kwh, 2),
-        "avg_daily_cost": round(avg_daily_cost, 2),
-        "min_daily_cost": round(min_daily_cost, 2),
-        "max_daily_cost": round(max_daily_cost, 2),
-        "cost_per_kwh": TOTAL_COST_PER_KWH
+        "energy_cost": round(parts["energy"], 2),
+        "fixed_cost": round(parts["fixed"], 2),
+        "gst": round(parts["gst"], 2),
+        "total_cost": round(parts["total"], 2),
+        "avg_daily_kwh": round(total_kwh / len(values), 2),
+        "avg_daily_cost": round(parts["total"] / len(values), 2),
+        "min_daily_cost": round(min(p["total"] for p in daily_parts), 2),
+        "max_daily_cost": round(max(p["total"] for p in daily_parts), 2),
+        "cost_per_kwh": settings["cost_per_kwh"] * (1 + settings["gst_rate"]),
+        "pricing": pricing,
     }
 
 
 def get_cost_trend(days: int = 30) -> Dict:
-    """Calculate cost trends (comparing periods)."""
-    from datetime import datetime
-    
+    """Calculate cost trends (comparing periods) with the current tariff."""
+    settings = get_pricing_settings()
     now = datetime.now()
-    
-    # Get two equal periods
+
     first_half_start = now - timedelta(days=days)
-    first_half_end = now - timedelta(days=days//2)
+    first_half_end = now - timedelta(days=days // 2)
     second_half_start = first_half_end + timedelta(days=1)
     second_half_end = now
-    
+
     first_start_str = first_half_start.strftime("%Y-%m-%d")
     first_end_str = first_half_end.strftime("%Y-%m-%d")
     second_start_str = second_half_start.strftime("%Y-%m-%d")
     second_end_str = second_half_end.strftime("%Y-%m-%d")
-    
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
-    # First period
+
     cursor.execute("""
-        SELECT SUM(value) FROM consumption WHERE date >= ? AND date <= ?
+        SELECT SUM(value), COUNT(*) FROM consumption WHERE date >= ? AND date <= ?
     """, (first_start_str, first_end_str))
-    first_period_kwh = cursor.fetchone()[0] or 0
-    
-    # Second period
+    first_row = cursor.fetchone()
+    first_period_kwh = first_row[0] or 0
+    first_period_days = first_row[1] or 0
+
     cursor.execute("""
-        SELECT SUM(value) FROM consumption WHERE date >= ? AND date <= ?
+        SELECT SUM(value), COUNT(*) FROM consumption WHERE date >= ? AND date <= ?
     """, (second_start_str, second_end_str))
-    second_period_kwh = cursor.fetchone()[0] or 0
-    
+    second_row = cursor.fetchone()
+    second_period_kwh = second_row[0] or 0
+    second_period_days = second_row[1] or 0
+
     conn.close()
-    
-    first_period_cost = calculate_cost(first_period_kwh)
-    second_period_cost = calculate_cost(second_period_kwh)
-    
-    # Calculate percentage change
+
+    first_parts = cost_components(first_period_kwh, first_period_days, settings)
+    second_parts = cost_components(second_period_kwh, second_period_days, settings)
+    first_period_cost = first_parts["total"]
+    second_period_cost = second_parts["total"]
+
     if first_period_cost > 0:
         cost_change_pct = ((second_period_cost - first_period_cost) / first_period_cost) * 100
     else:
         cost_change_pct = 0
-    
+
     return {
         "first_period": {
             "kwh": round(first_period_kwh, 2),
-            "cost": round(first_period_cost, 2)
+            "days": first_period_days,
+            "energy_cost": round(first_parts["energy"], 2),
+            "fixed_cost": round(first_parts["fixed"], 2),
+            "gst": round(first_parts["gst"], 2),
+            "cost": round(first_period_cost, 2),
         },
         "second_period": {
             "kwh": round(second_period_kwh, 2),
-            "cost": round(second_period_cost, 2)
+            "days": second_period_days,
+            "energy_cost": round(second_parts["energy"], 2),
+            "fixed_cost": round(second_parts["fixed"], 2),
+            "gst": round(second_parts["gst"], 2),
+            "cost": round(second_period_cost, 2),
         },
         "cost_change_amount": round(second_period_cost - first_period_cost, 2),
-        "cost_change_percent": round(cost_change_pct, 1)
+        "cost_change_percent": round(cost_change_pct, 1),
     }
 
 

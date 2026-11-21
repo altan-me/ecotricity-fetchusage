@@ -117,5 +117,50 @@ class StatisticsTest(DatabaseTestCase):
         self.assertAlmostEqual(database.calculate_cost(10), 2.44375)
 
 
+class PricingTest(DatabaseTestCase):
+    def test_default_pricing(self):
+        settings = database.get_pricing_settings()
+        self.assertAlmostEqual(settings["cost_per_kwh"], 0.2125)
+        self.assertAlmostEqual(settings["daily_fixed_rate"], 0.0)
+        self.assertAlmostEqual(settings["gst_rate"], 0.15)
+
+    def test_cost_components_split(self):
+        settings = database.get_pricing_settings()
+        parts = database.cost_components(10, 2, settings)
+        self.assertAlmostEqual(parts["energy"], 2.125)
+        self.assertAlmostEqual(parts["fixed"], 0.0)
+        self.assertAlmostEqual(parts["gst"], 0.31875)
+        self.assertAlmostEqual(parts["total"], 2.44375)
+
+    def test_daily_fixed_rate_is_applied_per_day(self):
+        database.update_pricing_settings(0.20, 1.0)
+        parts = database.cost_components(10, 3, database.get_pricing_settings())
+        self.assertAlmostEqual(parts["energy"], 2.0)
+        self.assertAlmostEqual(parts["fixed"], 3.0)
+        self.assertAlmostEqual(parts["gst"], 0.75)
+        self.assertAlmostEqual(parts["total"], 5.75)
+        self.assertAlmostEqual(database.calculate_cost(10), 3.45)
+
+    def test_statistics_include_breakdown(self):
+        database.update_pricing_settings(0.20, 1.0)
+        today = datetime.now().strftime("%Y-%m-%d")
+        database.insert_consumption_data([
+            {"date": today, "weekday": "Thu", "value": 10.0},
+        ])
+        stats = database.get_cost_statistics(days=30)
+        self.assertAlmostEqual(stats["energy_cost"], 2.0)
+        self.assertAlmostEqual(stats["fixed_cost"], 1.0)
+        self.assertAlmostEqual(stats["gst"], 0.45)
+        self.assertAlmostEqual(stats["total_cost"], 3.45)
+
+    def test_invalid_pricing_is_rejected(self):
+        with self.assertRaises(ValueError):
+            database.update_pricing_settings(-1, 0)
+        with self.assertRaises(ValueError):
+            database.update_pricing_settings(0.20, -5)
+        settings = database.get_pricing_settings()
+        self.assertAlmostEqual(settings["cost_per_kwh"], 0.2125)
+
+
 if __name__ == "__main__":
     unittest.main()

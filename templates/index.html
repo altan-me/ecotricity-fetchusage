@@ -391,6 +391,84 @@
             color: var(--usage);
         }
 
+        /* --- Pricing settings ------------------------------------------- */
+        .settings-panel {
+            padding: 18px 22px;
+            display: flex;
+            align-items: flex-end;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .settings-fields {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text);
+        }
+
+        .input-wrap {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid #d7ddd6;
+            border-radius: 6px;
+            background: var(--surface);
+            overflow: hidden;
+        }
+
+        .input-wrap:focus-within {
+            border-color: var(--usage);
+            box-shadow: 0 0 0 1px var(--usage);
+        }
+
+        .input-wrap input {
+            width: 120px;
+            padding: 8px 10px;
+            border: 0;
+            outline: 0;
+            font: inherit;
+            font-family: var(--mono);
+            font-variant-numeric: tabular-nums;
+            color: var(--ink);
+            background: transparent;
+        }
+
+        .input-unit {
+            padding: 0 10px;
+            color: var(--muted);
+            font-size: 0.74rem;
+            white-space: nowrap;
+        }
+
+        .settings-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .settings-status {
+            font-size: 0.8rem;
+            color: var(--up);
+        }
+
+        .settings-status.error {
+            color: var(--down);
+        }
+
+        .settings-note {
+            flex-basis: 100%;
+            color: var(--muted);
+            font-size: 0.76rem;
+        }
+
         /* --- Readouts --------------------------------------------------- */
         .readout-grid {
             display: grid;
@@ -753,7 +831,7 @@
                 margin-left: 0;
             }
             .ledger {
-                min-width: 520px;
+                min-width: 860px;
             }
         }
 
@@ -851,13 +929,13 @@
                 <div class="section-head">
                     <h2><span class="section-marker"></span>Cost analysis</h2>
                     <span class="rule"></span>
-                    <span class="meta">NZD · incl. 15% GST</span>
+                    <span class="meta" id="cost-gst-meta">NZD · incl. 15% GST</span>
                 </div>
                 <div class="readout-grid">
                     <div class="readout">
                         <h3>Last 30 days total cost</h3>
                         <div><span class="value" id="cost-total-30">—</span><span class="unit">NZD</span></div>
-                        <div class="subtext">incl. 15% GST</div>
+                        <div class="subtext" id="cost-total-breakdown">Energy $— · Fixed $— · GST $—</div>
                     </div>
                     <div class="readout">
                         <h3>Daily average cost</h3>
@@ -872,6 +950,63 @@
                         <h3>Cost trend</h3>
                         <div><span class="value" id="cost-trend">—</span></div>
                         <div class="subtext">vs. previous period</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pricing Settings -->
+            <section class="section section--cost">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>Pricing settings</h2>
+                    <span class="rule"></span>
+                    <span class="meta">NZD · excl. GST</span>
+                </div>
+                <div class="panel settings-panel">
+                    <div class="settings-fields">
+                        <label class="field" for="setting-price">
+                            <span>Price per kWh</span>
+                            <span class="input-wrap">
+                                <input type="number" id="setting-price" min="0" max="10" step="0.0001" inputmode="decimal">
+                                <span class="input-unit">NZD</span>
+                            </span>
+                        </label>
+                        <label class="field" for="setting-fixed">
+                            <span>Daily fixed charge</span>
+                            <span class="input-wrap">
+                                <input type="number" id="setting-fixed" min="0" max="100" step="0.01" inputmode="decimal">
+                                <span class="input-unit">NZD/day</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="settings-actions">
+                        <button class="btn btn--primary" id="settings-save" onclick="savePricing()">Save pricing</button>
+                        <span class="settings-status" id="settings-status" role="status" aria-live="polite"></span>
+                    </div>
+                    <p class="settings-note" id="settings-note">GST (15%) is added to both amounts. Changes apply to all historical costs.</p>
+                </div>
+            </section>
+
+            <!-- Cost component charts -->
+            <section class="section section--cost">
+                <div class="section-head">
+                    <h2><span class="section-marker"></span>Cost breakdown</h2>
+                    <span class="rule"></span>
+                    <span class="meta">energy · fixed · GST</span>
+                </div>
+                <div class="two-column">
+                    <div class="panel chart-panel">
+                        <div class="chart-controls"><span class="zoom-info">Last 30 days composition</span></div>
+                        <div class="chart-wrapper small">
+                            <canvas id="compositionChart" role="img" aria-label="Doughnut chart of cost components for the last 30 days"></canvas>
+                        </div>
+                        <div class="insight" id="insight-composition"></div>
+                    </div>
+                    <div class="panel chart-panel">
+                        <div class="chart-controls"><span class="zoom-info">Monthly by component</span></div>
+                        <div class="chart-wrapper small">
+                            <canvas id="monthlyCostChart" role="img" aria-label="Stacked bar chart of monthly energy, fixed and GST costs"></canvas>
+                        </div>
+                        <div class="insight" id="insight-components"></div>
                     </div>
                 </div>
             </section>
@@ -938,13 +1073,16 @@
                             <tr>
                                 <th scope="col">Month</th>
                                 <th scope="col">Usage (kWh)</th>
-                                <th scope="col">Cost (NZD)</th>
+                                <th scope="col">Energy</th>
+                                <th scope="col">Fixed</th>
+                                <th scope="col">GST</th>
+                                <th scope="col">Total (NZD)</th>
                                 <th scope="col">Avg/Day</th>
                                 <th scope="col">Days</th>
                             </tr>
                         </thead>
                         <tbody id="monthlyTable">
-                            <tr><td class="placeholder" colspan="5">Loading…</td></tr>
+                            <tr><td class="placeholder" colspan="8">Loading…</td></tr>
                         </tbody>
                     </table>
                     </div>
@@ -974,7 +1112,7 @@
     </div>
 
     <script>
-        let timeSeriesChart, dayOfWeekChart, highlowChart;
+        let timeSeriesChart, dayOfWeekChart, highlowChart, compositionChart, monthlyCostChart;
 
         Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
         Chart.defaults.color = '#647066';
@@ -1024,12 +1162,30 @@
                 }
                 highlowChart = null;
             }
+            if (compositionChart) {
+                try {
+                    compositionChart.destroy();
+                } catch (e) {
+                    console.warn('Error destroying compositionChart:', e);
+                }
+                compositionChart = null;
+            }
+            if (monthlyCostChart) {
+                try {
+                    monthlyCostChart.destroy();
+                } catch (e) {
+                    console.warn('Error destroying monthlyCostChart:', e);
+                }
+                monthlyCostChart = null;
+            }
 
             // Replace the canvas elements entirely
             const chartsToReplace = [
                 'timeSeriesChart',
                 'dayOfWeekChart',
-                'highlowChart'
+                'highlowChart',
+                'compositionChart',
+                'monthlyCostChart'
             ];
 
             chartsToReplace.forEach(chartId => {
@@ -1046,14 +1202,17 @@
 
         async function loadData() {
             try {
-                const [data, summary, daily, trends, costs] = await Promise.all([
+                const [data, summary, daily, trends, costs, dailyCosts, settings] = await Promise.all([
                     fetch('/api/data?days=all').then(r => r.json()),
                     fetch('/api/summary').then(r => r.json()),
                     fetch('/api/daily-breakdown').then(r => r.json()),
                     fetch('/api/trends').then(r => r.json()),
                     fetch('/api/costs/statistics').then(r => r.json()),
+                    fetch('/api/costs/daily').then(r => r.json()),
+                    fetch('/api/settings').then(r => r.json()),
                 ]);
 
+                updatePricingDisplay(settings);
                 updateStats(summary, trends, costs);
 
                 const firstDate = data.dates[0];
@@ -1068,13 +1227,22 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('content').style.display = 'block';
 
-                renderCharts(data, daily);
+                renderCharts(data, daily, dailyCosts);
                 updateInsights(data, daily);
-                await loadMonthlyData();
+                await loadMonthlyData(costs);
             } catch (error) {
                 console.error('Error loading data:', error);
                 showError('Failed to load data: ' + error.message);
             }
+        }
+
+        function updatePricingDisplay(settings) {
+            const gstPct = Math.round(settings.gst_rate * 100);
+            document.getElementById('cost-gst-meta').textContent = `NZD · incl. ${gstPct}% GST`;
+            document.getElementById('settings-note').textContent =
+                `GST (${gstPct}%) is added to both amounts. Changes apply to all historical costs.`;
+            document.getElementById('setting-price').value = settings.cost_per_kwh;
+            document.getElementById('setting-fixed').value = settings.daily_fixed_rate;
         }
 
         function updateStats(summary, trends, costs) {
@@ -1093,6 +1261,8 @@
             // Update cost stats
             const costStats = costs.last30Days;
             document.getElementById('cost-total-30').textContent = '$' + costStats.total_cost.toFixed(2);
+            document.getElementById('cost-total-breakdown').textContent =
+                `Energy $${costStats.energy_cost.toFixed(2)} · Fixed $${costStats.fixed_cost.toFixed(2)} · GST $${costStats.gst.toFixed(2)}`;
             document.getElementById('cost-avg-daily').textContent = '$' + costStats.avg_daily_cost.toFixed(2);
             document.getElementById('cost-min').textContent = '$' + costStats.min_daily_cost.toFixed(2);
             document.getElementById('cost-max').textContent = '$' + costStats.max_daily_cost.toFixed(2);
@@ -1109,9 +1279,12 @@
                 `${summary.dataRange.start || '—'} to ${summary.dataRange.end || '—'}`;
         }
 
-        function renderCharts(data, daily) {
+        function renderCharts(data, daily, dailyCosts) {
             // Destroy any existing charts before creating new ones
             destroyCharts();
+
+            const costByDate = {};
+            (dailyCosts || []).forEach(day => { costByDate[day.date] = day; });
 
             // Time series chart: fit the whole history into the panel so the
             // full date range stays visible, with zoom available for detail.
@@ -1159,13 +1332,13 @@
                         tooltip: {
                             callbacks: {
                                 afterLabel: function(context) {
-                                    if (context.datasetIndex === 0) {
-                                        const consumption = context.parsed.y;
-                                        const costPerKwh = 0.244375; // $0.2125 * 1.15 (incl. GST)
-                                        const cost = (consumption * costPerKwh).toFixed(2);
-                                        return `Cost: $${cost} NZD`;
-                                    }
-                                    return '';
+                                    if (context.datasetIndex !== 0) return '';
+                                    const day = costByDate[context.label];
+                                    if (!day) return '';
+                                    return [
+                                        `Total: $${day.cost.toFixed(2)}`,
+                                        `Energy $${day.energy_cost.toFixed(2)} · Fixed $${day.fixed_cost.toFixed(2)} · GST $${day.gst.toFixed(2)}`
+                                    ];
                                 }
                             }
                         },
@@ -1342,7 +1515,75 @@
             document.getElementById('loading').style.display = 'none';
         }
 
-        async function loadMonthlyData() {
+        function renderCostCharts(costs, months) {
+            const s = costs.last30Days;
+
+            compositionChart = new Chart(document.getElementById('compositionChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Energy charge', 'Fixed charge', 'GST'],
+                    datasets: [{
+                        data: [s.energy_cost, s.fixed_cost, s.gst],
+                        backgroundColor: ['#2f5bd7', '#0a766b', '#b45309'],
+                        borderColor: '#ffffff',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '62%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { padding: 14 } },
+                        tooltip: {
+                            callbacks: {
+                                label: c => ` ${c.label}: $${Number(c.parsed).toFixed(2)}`
+                            }
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('insight-composition').innerHTML =
+                `Last 30 days: energy <strong>$${s.energy_cost.toFixed(2)}</strong>, fixed <strong>$${s.fixed_cost.toFixed(2)}</strong>, GST <strong>$${s.gst.toFixed(2)}</strong>.`;
+
+            const ordered = (months || []).slice().reverse();
+            monthlyCostChart = new Chart(document.getElementById('monthlyCostChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ordered.map(m =>
+                        new Date(m.year, m.month - 1).toLocaleString('default', { month: 'short' }) +
+                        " '" + String(m.year).slice(-2)),
+                    datasets: [
+                        { label: 'Energy', data: ordered.map(m => m.energy_cost), backgroundColor: '#2f5bd7', stack: 'cost', borderRadius: 2 },
+                        { label: 'Fixed', data: ordered.map(m => m.fixed_cost), backgroundColor: '#0a766b', stack: 'cost', borderRadius: 2 },
+                        { label: 'GST', data: ordered.map(m => m.gst), backgroundColor: '#b45309', stack: 'cost', borderRadius: 2 },
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: c => ` ${c.dataset.label}: $${Number(c.parsed.y).toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'NZD' } }
+                    }
+                }
+            });
+
+            const sum = key => ordered.reduce((total, m) => total + m[key], 0);
+            document.getElementById('insight-components').innerHTML =
+                `All-time: energy <strong>$${sum('energy_cost').toFixed(2)}</strong> · fixed <strong>$${sum('fixed_cost').toFixed(2)}</strong> · GST <strong>$${sum('gst').toFixed(2)}</strong>.`;
+        }
+
+        async function loadMonthlyData(costs) {
             try {
                 const response = await fetch('/api/costs/monthly');
                 const months = await response.json();
@@ -1351,40 +1592,68 @@
                 tbody.innerHTML = '';
 
                 if (months.length === 0) {
-                    tbody.innerHTML = '<tr><td class="placeholder" colspan="5">No monthly data available</td></tr>';
-                    return;
-                }
+                    tbody.innerHTML = '<tr><td class="placeholder" colspan="8">No monthly data available</td></tr>';
+                } else {
+                    let totalMonthsCost = 0;
+                    let totalMonthsKwh = 0;
 
-                let totalMonthsCost = 0;
-                let totalMonthsKwh = 0;
+                    months.forEach(month => {
+                        const row = document.createElement('tr');
+                        const monthName = new Date(month.year, month.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-                months.forEach((month, idx) => {
-                    const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${monthName}</td>
+                            <td class="num">${month.total_kwh.toFixed(2)} kWh</td>
+                            <td class="num">$${month.energy_cost.toFixed(2)}</td>
+                            <td class="num">$${month.fixed_cost.toFixed(2)}</td>
+                            <td class="num">$${month.gst.toFixed(2)}</td>
+                            <td class="num cost">$${month.total_cost.toFixed(2)}</td>
+                            <td class="num">$${month.avg_daily_cost.toFixed(2)}</td>
+                            <td class="num">${month.days}</td>
+                        `;
+                        tbody.appendChild(row);
 
-                    const monthName = new Date(month.year, month.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+                        totalMonthsCost += month.total_cost;
+                        totalMonthsKwh += month.total_kwh;
+                    });
 
-                    row.innerHTML = `
-                        <td>${monthName}</td>
-                        <td class="num">${month.total_kwh} kWh</td>
-                        <td class="num cost">$${month.total_cost.toFixed(2)}</td>
-                        <td class="num">${month.avg_kwh} kWh</td>
-                        <td class="num">${month.days}</td>
-                    `;
-                    tbody.appendChild(row);
-
-                    totalMonthsCost += month.total_cost;
-                    totalMonthsKwh += month.total_kwh;
-                });
-
-                // Add average row
-                if (months.length > 0) {
                     const avgCostPerMonth = totalMonthsCost / months.length;
                     const avgKwhPerMonth = totalMonthsKwh / months.length;
                     document.getElementById('insight-monthly').innerHTML =
                         `<strong>All-time average:</strong> $${avgCostPerMonth.toFixed(2)}/month (${avgKwhPerMonth.toFixed(0)} kWh/month)`;
                 }
+
+                renderCostCharts(costs, months);
             } catch (error) {
                 console.error('Error loading monthly data:', error);
+            }
+        }
+
+        async function savePricing() {
+            const btn = document.getElementById('settings-save');
+            const status = document.getElementById('settings-status');
+            btn.disabled = true;
+            status.className = 'settings-status';
+            status.textContent = 'Saving…';
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cost_per_kwh: parseFloat(document.getElementById('setting-price').value),
+                        daily_fixed_rate: parseFloat(document.getElementById('setting-fixed').value),
+                    }),
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not save pricing');
+                status.textContent = 'Saved — costs updated';
+                await loadData();
+            } catch (error) {
+                status.className = 'settings-status error';
+                status.textContent = error.message;
+            } finally {
+                btn.disabled = false;
             }
         }
 

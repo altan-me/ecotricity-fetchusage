@@ -12,7 +12,7 @@ Fetches your power consumption from the Ecotricity portal, stores it in SQLite, 
 
 - Automated login and daily data fetch from the Ecotricity portal
 - SQLite storage with historical backfill for late-arriving data
-- Web dashboard: consumption trends, day-of-week breakdown, high/low distribution, cost analysis (incl. 15% GST), JSON/CSV export
+- Web dashboard: consumption trends, day-of-week breakdown, high/low distribution, cost analysis with editable pricing, JSON/CSV export
 - Background scheduler (daily fetch + weekly backfill)
 - CLI with formatted output, same data pipeline
 - Docker and docker-compose support with health check
@@ -72,7 +72,16 @@ Supported date presets: `last 2 days`, `last 7 days` (default), `last 30 days`, 
 
 ## Dashboard
 
-Features: summary statistics, cost analysis (15% GST), time-series/trend chart, day-of-week chart, high/low distribution, insights, JSON/CSV export.
+Features: summary statistics, cost analysis with editable pricing, a cost-composition doughnut and monthly stacked chart, time-series/trend chart, day-of-week chart, high/low distribution, insights, JSON/CSV export.
+
+### Pricing
+
+Use the **Pricing settings** panel in the dashboard to set your tariff:
+
+- **Price per kWh** (NZD, excl. GST) — default `0.2125`
+- **Daily fixed charge** (NZD/day, excl. GST) — default `0.00`
+
+Both values are stored in SQLite (`pricing_settings`) and apply to all historical data immediately. GST (15%) is added to both components. The cost figures, monthly ledger, tooltips and breakdown charts all use the active tariff.
 
 API endpoints:
 
@@ -88,6 +97,8 @@ API endpoints:
 | `GET /api/costs/statistics` | Cost statistics and trends |
 | `GET /api/costs/daily` | Daily costs (last 30 days) |
 | `GET /api/costs/monthly` | Monthly cost breakdown |
+| `GET /api/settings` | Current pricing settings |
+| `POST /api/settings` | Update pricing settings |
 | `GET /api/sync/info` | Last/next sync information |
 | `POST /api/sync/trigger` | Trigger a fetch |
 | `GET /api/export/json` | Export all data as JSON |
@@ -95,11 +106,12 @@ API endpoints:
 
 ## Configuration
 
-Cost constants live in `database.py`:
+Pricing is configured in the dashboard's **Pricing settings** panel (see above). The constants in `database.py` are only the defaults used when the database is first created:
 
 ```python
-COST_PER_KWH = 0.2125  # before GST
-GST_RATE = 0.15
+COST_PER_KWH = 0.2125    # default $/kWh before GST
+DAILY_FIXED_RATE = 0.0   # default daily fixed charge before GST
+GST_RATE = 0.15          # fixed GST rate
 ```
 
 ### Environment Variables
