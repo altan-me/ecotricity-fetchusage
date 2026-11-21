@@ -236,6 +236,7 @@ def api_settings_post():
         settings = update_pricing_settings(
             payload.get("cost_per_kwh"),
             payload.get("daily_fixed_rate"),
+            payload.get("effective_date"),
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400

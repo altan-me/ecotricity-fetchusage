@@ -76,12 +76,15 @@ Features: summary statistics, cost analysis with editable pricing, a cost-compos
 
 ### Pricing
 
-Use the **Pricing settings** panel in the dashboard to set your tariff:
+Open **Pricing** in the top bar to set your tariff:
 
 - **Price per kWh** (NZD, excl. GST) — default `0.2125`
 - **Daily fixed charge** (NZD/day, excl. GST) — default `0.00`
+- **Effective from** (optional, `YYYY-MM-DD`)
 
-Both values are stored in SQLite (`pricing_settings`) and apply to all historical data immediately. GST (15%) is added to both components. The cost figures, monthly ledger, tooltips and breakdown charts all use the active tariff.
+Leaving **Effective from** blank updates the baseline tariff that applies to all data. Setting a date creates a tariff tier: the new prices apply only to readings on or after that date, while earlier readings keep the previous tariff. Multiple tiers are supported and are selected per reading by date. GST (15%) is added to both components. All cost figures, the monthly ledger, tooltips and breakdown charts use the tariff in force on each reading's date.
+
+Each dated tier is also drawn as a dashed marker on the consumption timeline, labelled with the new rate, so you can see when pricing changed. Settings are stored in SQLite (`pricing_tiers`; existing `pricing_settings` rows are migrated on first run).
 
 API endpoints:
 

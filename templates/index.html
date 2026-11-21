@@ -114,12 +114,70 @@
             padding: 0 4px;
         }
 
-        /* Compact sync status + controls, docked in the top bar */
+        /* Top-nav actions: pricing popover + compact sync status */
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin-left: auto;
+        }
+
+        .pricing-nav {
+            position: relative;
+        }
+
+        .pricing-popover {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 290px;
+            padding: 16px;
+            background: var(--surface);
+            border: 1px solid #cfd6cd;
+            border-radius: 8px;
+            z-index: 1001;
+        }
+
+        .pricing-popover.open {
+            display: block;
+        }
+
+        .pricing-popover-head {
+            font-size: 0.82rem;
+            font-weight: 650;
+            color: var(--ink);
+            margin-bottom: 14px;
+        }
+
+        .date-input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #d7ddd6;
+            border-radius: 6px;
+            background: var(--surface);
+            color: var(--ink);
+            font: inherit;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+        }
+
+        .date-input:focus {
+            border-color: var(--usage);
+            outline: 0;
+            box-shadow: 0 0 0 1px var(--usage);
+        }
+
+        .field em {
+            color: var(--muted);
+            font-style: normal;
+            font-weight: 400;
+        }
+
         .sync-compact {
             display: flex;
             align-items: center;
             gap: 16px;
-            margin-left: auto;
         }
 
         .sync-compact-info {
@@ -391,19 +449,9 @@
             color: var(--usage);
         }
 
-        /* --- Pricing settings ------------------------------------------- */
-        .settings-panel {
-            padding: 18px 22px;
-            display: flex;
-            align-items: flex-end;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-
-        .settings-fields {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
+        /* --- Pricing form fields ---------------------------------------- */
+        .pricing-popover .field + .field {
+            margin-top: 12px;
         }
 
         .field {
@@ -452,6 +500,7 @@
             align-items: center;
             gap: 12px;
             flex-wrap: wrap;
+            margin-top: 14px;
         }
 
         .settings-status {
@@ -464,9 +513,10 @@
         }
 
         .settings-note {
-            flex-basis: 100%;
             color: var(--muted);
-            font-size: 0.76rem;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            margin-top: 10px;
         }
 
         /* --- Readouts --------------------------------------------------- */
@@ -551,6 +601,22 @@
             color: var(--muted);
             font-size: 0.78rem;
             padding-left: 6px;
+        }
+
+        .marker-legend {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--muted);
+            font-size: 0.74rem;
+            white-space: nowrap;
+        }
+
+        .marker-legend::before {
+            content: '';
+            width: 0;
+            height: 13px;
+            border-left: 2px dashed var(--warn);
         }
 
         .range-chip {
@@ -786,10 +852,15 @@
                 font-size: 0.76rem;
                 gap: 10px;
             }
-            .sync-compact {
+            .nav-actions {
                 width: 100%;
                 margin-left: 0;
                 justify-content: space-between;
+                gap: 10px;
+            }
+            .pricing-popover {
+                right: auto;
+                left: 0;
             }
             .masthead {
                 padding: 28px 0 22px;
@@ -848,6 +919,39 @@
     <div class="container">
         <div class="topbar">
             <div class="brand">ECOTRICITY<span>//</span>POWER MONITOR</div>
+            <div class="nav-actions">
+            <div class="pricing-nav">
+                <button class="btn btn--compact" id="pricing-toggle" onclick="togglePricing()" aria-expanded="false" aria-controls="pricing-popover">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.95 19.3a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.58 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.95a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.88.34H9.1A1.7 1.7 0 0 0 10.13 3V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88v.06a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03Z"/></svg>
+                    <span>Pricing</span>
+                </button>
+                <div class="pricing-popover" id="pricing-popover">
+                    <div class="pricing-popover-head">Pricing settings</div>
+                    <label class="field" for="setting-price">
+                        <span>Price per kWh</span>
+                        <span class="input-wrap">
+                            <input type="number" id="setting-price" min="0" max="10" step="0.0001" inputmode="decimal">
+                            <span class="input-unit">NZD</span>
+                        </span>
+                    </label>
+                    <label class="field" for="setting-fixed">
+                        <span>Daily fixed charge</span>
+                        <span class="input-wrap">
+                            <input type="number" id="setting-fixed" min="0" max="100" step="0.01" inputmode="decimal">
+                            <span class="input-unit">NZD/day</span>
+                        </span>
+                    </label>
+                    <label class="field" for="setting-date">
+                        <span>Effective from <em>(optional)</em></span>
+                        <input type="date" id="setting-date" class="date-input">
+                    </label>
+                    <div class="settings-actions">
+                        <button class="btn btn--primary btn--compact" id="settings-save" onclick="savePricing()">Save pricing</button>
+                        <span class="settings-status" id="settings-status" role="status" aria-live="polite"></span>
+                    </div>
+                    <p class="settings-note" id="settings-note">GST (15%) is added to both amounts. Changes apply to all historical costs.</p>
+                </div>
+            </div>
             <div class="sync-compact">
                 <div class="sync-compact-info">
                     <div class="sync-line">
@@ -877,6 +981,7 @@
                         </div>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
 
@@ -954,38 +1059,6 @@
                 </div>
             </section>
 
-            <!-- Pricing Settings -->
-            <section class="section section--cost">
-                <div class="section-head">
-                    <h2><span class="section-marker"></span>Pricing settings</h2>
-                    <span class="rule"></span>
-                    <span class="meta">NZD · excl. GST</span>
-                </div>
-                <div class="panel settings-panel">
-                    <div class="settings-fields">
-                        <label class="field" for="setting-price">
-                            <span>Price per kWh</span>
-                            <span class="input-wrap">
-                                <input type="number" id="setting-price" min="0" max="10" step="0.0001" inputmode="decimal">
-                                <span class="input-unit">NZD</span>
-                            </span>
-                        </label>
-                        <label class="field" for="setting-fixed">
-                            <span>Daily fixed charge</span>
-                            <span class="input-wrap">
-                                <input type="number" id="setting-fixed" min="0" max="100" step="0.01" inputmode="decimal">
-                                <span class="input-unit">NZD/day</span>
-                            </span>
-                        </label>
-                    </div>
-                    <div class="settings-actions">
-                        <button class="btn btn--primary" id="settings-save" onclick="savePricing()">Save pricing</button>
-                        <span class="settings-status" id="settings-status" role="status" aria-live="polite"></span>
-                    </div>
-                    <p class="settings-note" id="settings-note">GST (15%) is added to both amounts. Changes apply to all historical costs.</p>
-                </div>
-            </section>
-
             <!-- Cost component charts -->
             <section class="section section--cost">
                 <div class="section-head">
@@ -1024,6 +1097,7 @@
                         <button class="btn btn-sm" onclick="zoomChart(0.8)">Zoom out</button>
                         <button class="btn btn-sm" onclick="resetChart()">Reset view</button>
                         <span class="zoom-info">Wheel to zoom · Alt+drag or right-drag to pan</span>
+                        <span class="marker-legend" id="pricing-marker-legend" hidden>Pricing change</span>
                         <span class="range-chip" id="timeline-range">—</span>
                     </div>
                     <div class="chart-wrapper">
@@ -1227,7 +1301,7 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('content').style.display = 'block';
 
-                renderCharts(data, daily, dailyCosts);
+                renderCharts(data, daily, dailyCosts, settings);
                 updateInsights(data, daily);
                 await loadMonthlyData(costs);
             } catch (error) {
@@ -1239,10 +1313,17 @@
         function updatePricingDisplay(settings) {
             const gstPct = Math.round(settings.gst_rate * 100);
             document.getElementById('cost-gst-meta').textContent = `NZD · incl. ${gstPct}% GST`;
-            document.getElementById('settings-note').textContent =
-                `GST (${gstPct}%) is added to both amounts. Changes apply to all historical costs.`;
             document.getElementById('setting-price').value = settings.cost_per_kwh;
             document.getElementById('setting-fixed').value = settings.daily_fixed_rate;
+            document.getElementById('setting-date').value = settings.effective_date || '';
+
+            const tierCount = (settings.tiers || []).length;
+            const scope = settings.effective_date
+                ? `This tariff applies to readings from ${settings.effective_date} onward.`
+                : 'This tariff applies to all historical costs.';
+            document.getElementById('settings-note').textContent =
+                `GST (${gstPct}%) is added to both amounts. ${scope}` +
+                (tierCount > 1 ? ` ${tierCount} tariffs configured.` : '');
         }
 
         function updateStats(summary, trends, costs) {
@@ -1279,12 +1360,80 @@
                 `${summary.dataRange.start || '—'} to ${summary.dataRange.end || '—'}`;
         }
 
-        function renderCharts(data, daily, dailyCosts) {
+        function shortDate(iso) {
+            const parts = String(iso).split('-');
+            if (parts.length !== 3) return iso;
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return Number(parts[2]) + ' ' + months[Number(parts[1]) - 1];
+        }
+
+        // Draws a dashed vertical line at each pricing change, labelled with the
+        // new rate. Lives as a Chart.js plugin so it follows zoom/pan.
+        const pricingMarkerPlugin = {
+            id: 'pricingMarkers',
+            afterDatasetsDraw(chart, args, opts) {
+                const markers = (opts && opts.markers) || [];
+                if (!markers.length) return;
+                const xScale = chart.scales.x;
+                const area = chart.chartArea;
+                if (!xScale || !area) return;
+                const ctx = chart.ctx;
+                ctx.save();
+                markers.forEach((m, i) => {
+                    const px = xScale.getPixelForValue(m.index);
+                    if (!isFinite(px) || px < area.left || px > area.right) return;
+
+                    ctx.beginPath();
+                    ctx.setLineDash([4, 4]);
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = '#b45309';
+                    ctx.moveTo(px, area.top);
+                    ctx.lineTo(px, area.bottom);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.font = '600 10px ' + Chart.defaults.font.family;
+                    const alignRight = px > (area.left + area.right) / 2;
+                    ctx.textAlign = alignRight ? 'right' : 'left';
+                    ctx.textBaseline = 'top';
+                    const xText = px + (alignRight ? -6 : 6);
+                    const yText = area.top + 6 + (i % 2) * 16;
+                    const textW = ctx.measureText(m.label).width;
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+                    ctx.fillRect(alignRight ? xText - textW - 3 : xText - 3, yText - 2, textW + 6, 14);
+                    ctx.fillStyle = '#b45309';
+                    ctx.fillText(m.label, xText, yText);
+                });
+                ctx.restore();
+            }
+        };
+
+        function renderCharts(data, daily, dailyCosts, settings) {
             // Destroy any existing charts before creating new ones
             destroyCharts();
 
             const costByDate = {};
             (dailyCosts || []).forEach(day => { costByDate[day.date] = day; });
+
+            // Pricing-change markers: one per dated tier, positioned on the first
+            // reading covered by that rate.
+            const markers = [];
+            (settings && settings.tiers ? settings.tiers : []).forEach(tier => {
+                if (!tier.effective_date) return;
+                let index = data.dates.indexOf(tier.effective_date);
+                if (index === -1) {
+                    index = data.dates.findIndex(date => date >= tier.effective_date);
+                }
+                if (index === -1 || index >= data.dates.length) return;
+                markers.push({
+                    index: index,
+                    label: `${shortDate(tier.effective_date)}: $${tier.cost_per_kwh}/kWh · $${tier.daily_fixed_rate}/day`
+                });
+            });
+            const legend = document.getElementById('pricing-marker-legend');
+            legend.hidden = markers.length === 0;
+            legend.textContent = markers.length > 1 ? `${markers.length} pricing changes` : 'Pricing change';
 
             // Time series chart: fit the whole history into the panel so the
             // full date range stays visible, with zoom available for detail.
@@ -1296,6 +1445,7 @@
 
             timeSeriesChart = new Chart(timeSeriesCtx, {
                 type: 'line',
+                plugins: [pricingMarkerPlugin],
                 data: {
                     labels: data.dates,
                     datasets: [
@@ -1342,6 +1492,7 @@
                                 }
                             }
                         },
+                        pricingMarkers: { markers: markers },
                         zoom: {
                             zoom: {
                                 wheel: {
@@ -1643,6 +1794,7 @@
                     body: JSON.stringify({
                         cost_per_kwh: parseFloat(document.getElementById('setting-price').value),
                         daily_fixed_rate: parseFloat(document.getElementById('setting-fixed').value),
+                        effective_date: document.getElementById('setting-date').value,
                     }),
                 });
                 const result = await response.json();
@@ -1764,21 +1916,35 @@
         function toggleSyncDropdown() {
             const menu = document.getElementById('sync-dropdown-menu');
             setSyncDropdown(!menu.classList.contains('open'));
+            if (menu.classList.contains('open')) setPricingOpen(false);
         }
 
-        // Close dropdown when clicking outside or pressing Escape
-        document.addEventListener('click', (e) => {
-            const toggle = e.target.closest('.sync-dropdown-toggle');
-            const dropdown = e.target.closest('.sync-dropdown');
+        function setPricingOpen(open) {
+            document.getElementById('pricing-popover').classList.toggle('open', open);
+            document.getElementById('pricing-toggle').setAttribute('aria-expanded', String(open));
+        }
 
-            if (!toggle && !dropdown) {
-                setSyncDropdown(false);
-            }
+        function togglePricing() {
+            const popover = document.getElementById('pricing-popover');
+            setPricingOpen(!popover.classList.contains('open'));
+            if (popover.classList.contains('open')) setSyncDropdown(false);
+        }
+
+        // Close popovers when clicking outside or pressing Escape
+        document.addEventListener('click', (e) => {
+            const syncToggle = e.target.closest('.sync-dropdown-toggle');
+            const syncDropdown = e.target.closest('.sync-dropdown');
+            const pricingToggle = e.target.closest('#pricing-toggle');
+            const pricingPopover = e.target.closest('#pricing-popover');
+
+            if (!syncToggle && !syncDropdown) setSyncDropdown(false);
+            if (!pricingToggle && !pricingPopover) setPricingOpen(false);
         });
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 setSyncDropdown(false);
+                setPricingOpen(false);
             }
         });
 

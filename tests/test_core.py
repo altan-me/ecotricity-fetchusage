@@ -161,6 +161,37 @@ class PricingTest(DatabaseTestCase):
         settings = database.get_pricing_settings()
         self.assertAlmostEqual(settings["cost_per_kwh"], 0.2125)
 
+    def test_effective_date_applies_only_from_that_date(self):
+        database.update_pricing_settings(0.20, 1.0, "2026-10-01")
+        tiers = database.get_pricing_tiers()
+        self.assertEqual(len(tiers), 2)
+        self.assertIsNone(tiers[0]["effective_date"])
+        self.assertEqual(tiers[1]["effective_date"], "2026-10-01")
+
+        before = database.pricing_for_date("2026-09-30", tiers)
+        after = database.pricing_for_date("2026-10-01", tiers)
+        self.assertAlmostEqual(before["cost_per_kwh"], 0.2125)
+        self.assertAlmostEqual(after["cost_per_kwh"], 0.20)
+        self.assertAlmostEqual(after["daily_fixed_rate"], 1.0)
+
+    def test_itemised_rows_use_tier_per_date(self):
+        database.update_pricing_settings(0.20, 1.0, "2026-10-01")
+        database.insert_consumption_data([
+            {"date": "2026-09-30", "weekday": "Wed", "value": 10.0},
+            {"date": "2026-10-01", "weekday": "Thu", "value": 10.0},
+        ])
+        rows = database.get_consumption_by_range(None)
+        totals, daily = database.itemise_rows(rows, database.get_pricing_tiers())
+
+        self.assertAlmostEqual(daily[0]["total"], 2.44375)  # old tariff
+        self.assertAlmostEqual(daily[1]["total"], 3.45)     # new tariff
+        self.assertAlmostEqual(totals["fixed"], 1.0)        # fixed only from 1 Oct
+
+    def test_invalid_effective_date_is_rejected(self):
+        with self.assertRaises(ValueError):
+            database.update_pricing_settings(0.20, 1.0, "01/10/2026")
+        self.assertEqual(len(database.get_pricing_tiers()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

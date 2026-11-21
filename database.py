@@ -74,7 +74,7 @@ def init_db() -> None:
             VALUES ('idle')
         """)
 
-    # Pricing settings: a single row holding the editable tariff.
+    # Legacy single-row table, kept so existing databases upgrade cleanly.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pricing_settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -84,12 +84,36 @@ def init_db() -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    cursor.execute("SELECT COUNT(*) FROM pricing_settings")
+
+    # Tiered pricing: each row applies from its effective date onwards.
+    # A NULL effective_date is the baseline that applies to all data.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pricing_tiers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cost_per_kwh REAL NOT NULL,
+            daily_fixed_rate REAL NOT NULL,
+            gst_rate REAL NOT NULL,
+            effective_date TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM pricing_tiers")
     if cursor.fetchone()[0] == 0:
         cursor.execute("""
-            INSERT INTO pricing_settings (id, cost_per_kwh, daily_fixed_rate, gst_rate)
-            VALUES (1, ?, ?, ?)
-        """, (COST_PER_KWH, DAILY_FIXED_RATE, GST_RATE))
+            SELECT cost_per_kwh, daily_fixed_rate, gst_rate
+            FROM pricing_settings LIMIT 1
+        """)
+        legacy = cursor.fetchone()
+        if legacy:
+            cursor.execute("""
+                INSERT INTO pricing_tiers (cost_per_kwh, daily_fixed_rate, gst_rate, effective_date)
+                VALUES (?, ?, ?, NULL)
+            """, legacy)
+        else:
+            cursor.execute("""
+                INSERT INTO pricing_tiers (cost_per_kwh, daily_fixed_rate, gst_rate, effective_date)
+                VALUES (?, ?, ?, NULL)
+            """, (COST_PER_KWH, DAILY_FIXED_RATE, GST_RATE))
 
     conn.commit()
     conn.close()
@@ -376,31 +400,50 @@ def get_failed_fetch_dates(days_back: int = 30) -> List[str]:
     return failed_dates
 
 
-def get_pricing_settings() -> Dict:
-    """Return the active pricing settings (defaults if the row is missing)."""
-    defaults = {
+def get_pricing_tiers() -> List[Dict]:
+    """Return all pricing tiers, baseline first, then chronological."""
+    defaults = [{
         "cost_per_kwh": COST_PER_KWH,
         "daily_fixed_rate": DAILY_FIXED_RATE,
         "gst_rate": GST_RATE,
-    }
+        "effective_date": None,
+    }]
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT cost_per_kwh, daily_fixed_rate, gst_rate
-            FROM pricing_settings WHERE id = 1
+            SELECT cost_per_kwh, daily_fixed_rate, gst_rate, effective_date
+            FROM pricing_tiers
+            ORDER BY (effective_date IS NOT NULL), effective_date, id
         """)
-        row = cursor.fetchone()
+        rows = cursor.fetchall()
         conn.close()
     except sqlite3.OperationalError:
         return defaults
 
-    if not row:
+    if not rows:
         return defaults
+    return [
+        {
+            "cost_per_kwh": row[0],
+            "daily_fixed_rate": row[1],
+            "gst_rate": row[2],
+            "effective_date": row[3],
+        }
+        for row in rows
+    ]
+
+
+def get_pricing_settings() -> Dict:
+    """Return the most recently configured tier (the one the UI edits)."""
+    tiers = get_pricing_tiers()
+    current = tiers[-1]
     return {
-        "cost_per_kwh": row[0],
-        "daily_fixed_rate": row[1],
-        "gst_rate": row[2],
+        "cost_per_kwh": current["cost_per_kwh"],
+        "daily_fixed_rate": current["daily_fixed_rate"],
+        "gst_rate": current["gst_rate"],
+        "effective_date": current["effective_date"],
+        "tiers": tiers,
     }
 
 
@@ -415,24 +458,64 @@ def _validated_rate(value, name: str, maximum: float) -> float:
     return rate
 
 
-def update_pricing_settings(cost_per_kwh, daily_fixed_rate) -> Dict:
-    """Persist new pricing values and return the resulting settings."""
+def _validated_date(value) -> Optional[str]:
+    """Normalise an optional effective date to YYYY-MM-DD."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    text = str(value).strip()
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Effective date must be in YYYY-MM-DD format")
+
+
+def update_pricing_settings(cost_per_kwh, daily_fixed_rate, effective_date=None) -> Dict:
+    """Persist a pricing tier. A blank effective date updates the all-data tier."""
     rate = _validated_rate(cost_per_kwh, "Price per kWh", 10)
     fixed = _validated_rate(daily_fixed_rate, "Daily fixed charge", 100)
+    date = _validated_date(effective_date)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO pricing_settings (id, cost_per_kwh, daily_fixed_rate, gst_rate)
-        VALUES (1, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            cost_per_kwh = excluded.cost_per_kwh,
-            daily_fixed_rate = excluded.daily_fixed_rate,
-            updated_at = CURRENT_TIMESTAMP
-    """, (rate, fixed, GST_RATE))
+    if date is None:
+        cursor.execute("""
+            SELECT id FROM pricing_tiers WHERE effective_date IS NULL ORDER BY id LIMIT 1
+        """)
+    else:
+        cursor.execute("""
+            SELECT id FROM pricing_tiers WHERE effective_date = ? ORDER BY id LIMIT 1
+        """, (date,))
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute("""
+            UPDATE pricing_tiers
+            SET cost_per_kwh = ?, daily_fixed_rate = ?, gst_rate = ?
+            WHERE id = ?
+        """, (rate, fixed, GST_RATE, existing[0]))
+    else:
+        cursor.execute("""
+            INSERT INTO pricing_tiers (cost_per_kwh, daily_fixed_rate, gst_rate, effective_date)
+            VALUES (?, ?, ?, ?)
+        """, (rate, fixed, GST_RATE, date))
     conn.commit()
     conn.close()
     return get_pricing_settings()
+
+
+def pricing_for_date(date_str: str, tiers: List[Dict]) -> Dict:
+    """Pick the tier in force on a given date."""
+    dated = [t for t in tiers if t["effective_date"] and t["effective_date"] <= date_str]
+    if dated:
+        return max(dated, key=lambda t: t["effective_date"])
+    for tier in tiers:
+        if tier["effective_date"] is None:
+            return tier
+    return {
+        "cost_per_kwh": COST_PER_KWH,
+        "daily_fixed_rate": DAILY_FIXED_RATE,
+        "gst_rate": GST_RATE,
+    }
 
 
 def cost_components(total_kwh: float, days: int, settings: Dict) -> Dict:
@@ -448,18 +531,31 @@ def cost_components(total_kwh: float, days: int, settings: Dict) -> Dict:
     }
 
 
+def itemise_rows(rows: List[Dict], tiers: List[Dict]) -> Tuple[Dict, List[Dict]]:
+    """Itemise a set of daily readings, applying the tier in force on each date."""
+    totals = {"energy": 0.0, "fixed": 0.0, "gst": 0.0, "total": 0.0, "days": len(rows)}
+    daily = []
+    for row in rows:
+        parts = cost_components(row["value"], 1, pricing_for_date(row["date"], tiers))
+        daily.append(parts)
+        for key in ("energy", "fixed", "gst", "total"):
+            totals[key] += parts[key]
+    return totals, daily
+
+
 def calculate_cost(kwh: float) -> float:
-    """Total cost for a single day's kWh, including GST and the daily fixed charge."""
+    """Total cost for a day's kWh using the most recently configured tariff."""
     return cost_components(kwh, 1, get_pricing_settings())["total"]
 
 
 def get_daily_costs(days: int = 30) -> List[Dict]:
     """Get consumption and itemised costs for each day."""
-    settings = get_pricing_settings()
+    tiers = get_pricing_tiers()
     rows = get_consumption_by_range(days)
 
     daily_costs = []
     for row in rows:
+        settings = pricing_for_date(row["date"], tiers)
         parts = cost_components(row["value"], 1, settings)
         daily_costs.append({
             "date": row["date"],
@@ -476,60 +572,53 @@ def get_daily_costs(days: int = 30) -> List[Dict]:
 
 def get_all_monthly_costs() -> List[Dict]:
     """Get consumption and itemised costs for all available months."""
-    settings = get_pricing_settings()
+    tiers = get_pricing_tiers()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    cursor.execute("SELECT date, value FROM consumption ORDER BY date ASC")
 
-    cursor.execute("""
-        SELECT 
-            strftime('%Y-%m', date) as month,
-            SUM(value) as total_kwh,
-            COUNT(*) as days,
-            MIN(value) as min_kwh,
-            MAX(value) as max_kwh,
-            AVG(value) as avg_kwh
-        FROM consumption
-        GROUP BY month
-        ORDER BY month DESC
-    """)
+    by_month = {}
+    for date_str, value in cursor.fetchall():
+        if not date_str:
+            continue
+        by_month.setdefault(date_str[:7], []).append({"date": date_str, "value": value})
+    conn.close()
 
     months = []
-    for row in cursor.fetchall():
-        total_kwh = row[1]
-        month_str = row[0]
+    for month_str in sorted(by_month, reverse=True):
+        rows = by_month[month_str]
+        values = [row["value"] for row in rows]
+        totals, _ = itemise_rows(rows, tiers)
         year, month = month_str.split('-')
-        days = row[2]
-        parts = cost_components(total_kwh, days, settings)
-
         months.append({
             "year": int(year),
             "month": int(month),
             "month_str": month_str,
-            "total_kwh": round(total_kwh, 2),
-            "energy_cost": round(parts["energy"], 2),
-            "fixed_cost": round(parts["fixed"], 2),
-            "gst": round(parts["gst"], 2),
-            "total_cost": round(parts["total"], 2),
-            "days": days,
-            "min_kwh": round(row[3], 2),
-            "max_kwh": round(row[4], 2),
-            "avg_kwh": round(row[5], 2),
-            "avg_daily_cost": round(parts["total"] / days, 2) if days else 0.0,
+            "total_kwh": round(sum(values), 2),
+            "energy_cost": round(totals["energy"], 2),
+            "fixed_cost": round(totals["fixed"], 2),
+            "gst": round(totals["gst"], 2),
+            "total_cost": round(totals["total"], 2),
+            "days": len(rows),
+            "min_kwh": round(min(values), 2),
+            "max_kwh": round(max(values), 2),
+            "avg_kwh": round(sum(values) / len(values), 2),
+            "avg_daily_cost": round(totals["total"] / len(rows), 2),
         })
-
-    conn.close()
     return months
 
 
 def get_cost_statistics(days: Optional[int] = 30) -> Dict:
     """Get itemised cost statistics for the period (None means all time)."""
-    settings = get_pricing_settings()
+    tiers = get_pricing_tiers()
     rows = get_consumption_by_range(days)
+    current = get_pricing_settings()
 
     pricing = {
-        "cost_per_kwh": settings["cost_per_kwh"],
-        "daily_fixed_rate": settings["daily_fixed_rate"],
-        "gst_rate": settings["gst_rate"],
+        "cost_per_kwh": current["cost_per_kwh"],
+        "daily_fixed_rate": current["daily_fixed_rate"],
+        "gst_rate": current["gst_rate"],
+        "effective_date": current["effective_date"],
     }
 
     if not rows:
@@ -544,34 +633,32 @@ def get_cost_statistics(days: Optional[int] = 30) -> Dict:
             "avg_daily_cost": 0.0,
             "min_daily_cost": 0.0,
             "max_daily_cost": 0.0,
-            "cost_per_kwh": settings["cost_per_kwh"] * (1 + settings["gst_rate"]),
+            "cost_per_kwh": current["cost_per_kwh"] * (1 + current["gst_rate"]),
             "pricing": pricing,
         }
 
-    values = [r["value"] for r in rows]
-    total_kwh = sum(values)
-    parts = cost_components(total_kwh, len(values), settings)
-    daily_parts = [cost_components(v, 1, settings) for v in values]
+    totals, daily = itemise_rows(rows, tiers)
+    total_kwh = sum(row["value"] for row in rows)
 
     return {
-        "period_days": len(values),
+        "period_days": len(rows),
         "total_kwh": round(total_kwh, 2),
-        "energy_cost": round(parts["energy"], 2),
-        "fixed_cost": round(parts["fixed"], 2),
-        "gst": round(parts["gst"], 2),
-        "total_cost": round(parts["total"], 2),
-        "avg_daily_kwh": round(total_kwh / len(values), 2),
-        "avg_daily_cost": round(parts["total"] / len(values), 2),
-        "min_daily_cost": round(min(p["total"] for p in daily_parts), 2),
-        "max_daily_cost": round(max(p["total"] for p in daily_parts), 2),
-        "cost_per_kwh": settings["cost_per_kwh"] * (1 + settings["gst_rate"]),
+        "energy_cost": round(totals["energy"], 2),
+        "fixed_cost": round(totals["fixed"], 2),
+        "gst": round(totals["gst"], 2),
+        "total_cost": round(totals["total"], 2),
+        "avg_daily_kwh": round(total_kwh / len(rows), 2),
+        "avg_daily_cost": round(totals["total"] / len(rows), 2),
+        "min_daily_cost": round(min(p["total"] for p in daily), 2),
+        "max_daily_cost": round(max(p["total"] for p in daily), 2),
+        "cost_per_kwh": current["cost_per_kwh"] * (1 + current["gst_rate"]),
         "pricing": pricing,
     }
 
 
 def get_cost_trend(days: int = 30) -> Dict:
-    """Calculate cost trends (comparing periods) with the current tariff."""
-    settings = get_pricing_settings()
+    """Calculate cost trends, applying the tariff in force on each date."""
+    tiers = get_pricing_tiers()
     now = datetime.now()
 
     first_half_start = now - timedelta(days=days)
@@ -579,57 +666,44 @@ def get_cost_trend(days: int = 30) -> Dict:
     second_half_start = first_half_end + timedelta(days=1)
     second_half_end = now
 
-    first_start_str = first_half_start.strftime("%Y-%m-%d")
-    first_end_str = first_half_end.strftime("%Y-%m-%d")
-    second_start_str = second_half_start.strftime("%Y-%m-%d")
-    second_end_str = second_half_end.strftime("%Y-%m-%d")
-
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    cursor.execute("""
+        SELECT date, value FROM consumption
+        WHERE date >= ? AND date <= ?
+    """, (first_half_start.strftime("%Y-%m-%d"), first_half_end.strftime("%Y-%m-%d")))
+    first_rows = [{"date": r[0], "value": r[1]} for r in cursor.fetchall()]
 
     cursor.execute("""
-        SELECT SUM(value), COUNT(*) FROM consumption WHERE date >= ? AND date <= ?
-    """, (first_start_str, first_end_str))
-    first_row = cursor.fetchone()
-    first_period_kwh = first_row[0] or 0
-    first_period_days = first_row[1] or 0
-
-    cursor.execute("""
-        SELECT SUM(value), COUNT(*) FROM consumption WHERE date >= ? AND date <= ?
-    """, (second_start_str, second_end_str))
-    second_row = cursor.fetchone()
-    second_period_kwh = second_row[0] or 0
-    second_period_days = second_row[1] or 0
-
+        SELECT date, value FROM consumption
+        WHERE date >= ? AND date <= ?
+    """, (second_half_start.strftime("%Y-%m-%d"), second_half_end.strftime("%Y-%m-%d")))
+    second_rows = [{"date": r[0], "value": r[1]} for r in cursor.fetchall()]
     conn.close()
 
-    first_parts = cost_components(first_period_kwh, first_period_days, settings)
-    second_parts = cost_components(second_period_kwh, second_period_days, settings)
-    first_period_cost = first_parts["total"]
-    second_period_cost = second_parts["total"]
+    first_totals, _ = itemise_rows(first_rows, tiers)
+    second_totals, _ = itemise_rows(second_rows, tiers)
+    first_period_cost = first_totals["total"]
+    second_period_cost = second_totals["total"]
 
     if first_period_cost > 0:
         cost_change_pct = ((second_period_cost - first_period_cost) / first_period_cost) * 100
     else:
         cost_change_pct = 0
 
+    def period_payload(rows, totals):
+        return {
+            "kwh": round(sum(r["value"] for r in rows), 2),
+            "days": len(rows),
+            "energy_cost": round(totals["energy"], 2),
+            "fixed_cost": round(totals["fixed"], 2),
+            "gst": round(totals["gst"], 2),
+            "cost": round(totals["total"], 2),
+        }
+
     return {
-        "first_period": {
-            "kwh": round(first_period_kwh, 2),
-            "days": first_period_days,
-            "energy_cost": round(first_parts["energy"], 2),
-            "fixed_cost": round(first_parts["fixed"], 2),
-            "gst": round(first_parts["gst"], 2),
-            "cost": round(first_period_cost, 2),
-        },
-        "second_period": {
-            "kwh": round(second_period_kwh, 2),
-            "days": second_period_days,
-            "energy_cost": round(second_parts["energy"], 2),
-            "fixed_cost": round(second_parts["fixed"], 2),
-            "gst": round(second_parts["gst"], 2),
-            "cost": round(second_period_cost, 2),
-        },
+        "first_period": period_payload(first_rows, first_totals),
+        "second_period": period_payload(second_rows, second_totals),
         "cost_change_amount": round(second_period_cost - first_period_cost, 2),
         "cost_change_percent": round(cost_change_pct, 1),
     }
